@@ -48,7 +48,7 @@ where
         let id_str = format!("{:?}", id);
 
         // Try cache first if cache manager is present
-        if let Some(cache_manager) = &self.cache_manager {
+        if let Some(cache_manager) = self.cache_manager() {
             let cache_prefix = self.get_cache_prefix();
 
             // Try to get from cache
@@ -68,7 +68,7 @@ where
             .map_err(|e| StorehausError::DatabaseError(e.to_string()))?;
 
         // Cache the result if found and cache manager is present
-        if let (Some(record), Some(cache_manager)) = (&result, &self.cache_manager) {
+        if let (Some(record), Some(cache_manager)) = (&result, self.cache_manager()) {
             let cache_prefix = self.get_cache_prefix();
             let cache_ttl = self.get_cache_ttl();
 
@@ -115,7 +115,7 @@ where
         }
 
         // Invalidate cache after update
-        if let Some(cache_manager) = &self.cache_manager {
+        if let Some(cache_manager) = self.cache_manager() {
             let cache_prefix = self.get_cache_prefix();
             let id_str = format!("{:?}", id);
 

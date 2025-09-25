@@ -1,8 +1,6 @@
 use sqlx::PgPool;
 use std::collections::HashMap;
 use store_object::traits::StoreObject;
-use signal_system::SignalManager;
-use std::sync::Arc;
 
 use crate::errors::DispatcherError;
 use crate::config::DatabaseConfig;
@@ -11,7 +9,6 @@ use crate::config::DatabaseConfig;
 pub struct Dispatcher {
     pool: PgPool,
     stores: HashMap<String, Box<dyn std::any::Any + Send + Sync>>,
-    signal_manager: Arc<SignalManager>,
 }
 
 impl Dispatcher {
@@ -27,7 +24,6 @@ impl Dispatcher {
         Ok(Self {
             pool,
             stores: HashMap::new(),
-            signal_manager: Arc::new(SignalManager::new()),
         })
     }
 
@@ -92,8 +88,4 @@ impl Dispatcher {
         Ok(())
     }
 
-    /// Get Arc to signal manager for sharing
-    pub fn signal_manager(&self) -> Arc<SignalManager> {
-        Arc::clone(&self.signal_manager)
-    }
 }

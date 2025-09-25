@@ -3,4 +3,4 @@ pub mod store_object;
 pub mod soft_deletable;
 pub mod filterable;
 
-pub use core::GenericStore;
+pub use core::{GenericStore, CacheParams};

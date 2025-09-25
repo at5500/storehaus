@@ -1,13 +1,13 @@
 use dispatcher::{DatabaseConfig, Dispatcher};
-use store_object::{generic_store::GenericStore, TableMetadata, StoreObject, QueryBuilder, QueryFilter, SortOrder};
-use table_derive::TableMetadata as TableMetadataDerive;
+use store_object::{generic_store::{GenericStore, CacheParams}, TableMetadata, StoreObject, QueryBuilder, QueryFilter, SortOrder};
+use table_derive::model;
 use signal_system::DatabaseEvent;
 use cache_system::{CacheConfig, CacheManager};
 use uuid::Uuid;
 use serde_json::json;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, sqlx::Type, TableMetadataDerive)]
+#[model]
 #[table(name = "users")]
 pub struct User {
     #[primary_key]
@@ -47,8 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ Database connected");
 
     // Signals setup
-    let signal_manager = dispatcher.signal_manager();
-    signal_manager.enable();
+    let signal_manager = Arc::new(signal_system::SignalManager::new());
     signal_manager.add_callback(|event: &DatabaseEvent| {
         println!("🔔 {} on {}: {:?}",
             match event.event_type {
@@ -60,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             event.record_id.as_ref().unwrap_or(&"batch".to_string())
         );
     });
-    println!("✅ Signals enabled");
+    println!("✅ Signals setup");
 
     // Cache setup (optional)
     let cache_manager = match setup_cache().await {
@@ -77,12 +76,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Auto-migrate and register store
     dispatcher.auto_migrate::<User>(false).await?;
 
+    let cache_params = cache_manager.clone().map(|cm| {
+        CacheParams::new(cm)
+            .with_ttl(900)
+            .with_prefix("users".to_string())
+    });
+
     let user_store = GenericStore::<User>::new(
         dispatcher.pool().clone(),
-        Some(dispatcher.signal_manager()),
-        cache_manager.clone(),
-        cache_manager.as_ref().map(|_| 900),
-        cache_manager.as_ref().map(|_| "users".to_string()),
+        Some(signal_manager.clone()),
+        cache_params,
     );
 
     dispatcher.register_store("users".to_string(), user_store)?;

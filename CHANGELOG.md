@@ -17,11 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker Compose setup with PostgreSQL and Redis
 - Cache performance testing and comparison
 - Graceful fallback when Redis is unavailable
+- `#[model]` attribute macro for simplified model definitions
+- `CacheParams` struct for better cache configuration management
 
 ### Changed
 - **BREAKING**: Simplified `create` method API - removed unnecessary `CreateResult` type
   - **Before**: `create()` returned `Result<(Model, CreateResult), Error>`
   - **After**: `create()` returns `Result<Model, Error>`
+- **BREAKING**: SignalManager architecture refactored for better flexibility
+  - SignalManager now created externally like CacheManager
+  - Removed enable/disable methods - SignalManager always active when provided
+  - Removed SignalManager from Dispatcher - now passed directly to stores
+- **BREAKING**: GenericStore constructor now accepts `CacheParams` instead of separate cache parameters
+  - **Before**: `GenericStore::new(pool, signals, cache_manager, ttl, prefix)`
+  - **After**: `GenericStore::new(pool, signals, cache_params)`
 - Consolidated three separate examples into single comprehensive demo
 - Updated Makefile commands for better clarity:
   - `make demo` - Run demo with PostgreSQL only
@@ -29,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `make demo-full` - Auto-start services and run full demo
 - Enhanced README with updated usage examples and feature documentation
 - Removed obsolete `version` attribute from docker-compose.yml
+- Updated all examples to use `#[model]` macro instead of explicit derives
 
 ### Improved
 - Better error handling and logging throughout the system

@@ -69,10 +69,10 @@ A Rust database abstraction library with automatic code generation for PostgreSQ
 ### Define a Model
 
 ```rust
-use table_derive::TableMetadata as TableMetadataDerive;
+use table_derive::model;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, sqlx::Type, TableMetadataDerive)]
+#[model]
 #[table(name = "users")]
 pub struct User {
     #[primary_key]
@@ -99,8 +99,8 @@ pub struct User {
 
 ```rust
 use dispatcher::{DatabaseConfig, Dispatcher};
-use store_object::{generic_store::GenericStore, QueryBuilder, QueryFilter, SortOrder};
-use signal_system::DatabaseEvent;
+use store_object::{generic_store::{GenericStore, CacheParams}, QueryBuilder, QueryFilter, SortOrder};
+use signal_system::{DatabaseEvent, SignalManager};
 use cache_system::{CacheConfig, CacheManager};
 use serde_json::json;
 
@@ -119,8 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dispatcher = Dispatcher::new(config).await?;
 
     // Setup signals (optional)
-    let signal_manager = dispatcher.signal_manager();
-    signal_manager.enable();
+    let signal_manager = std::sync::Arc::new(SignalManager::new());
     signal_manager.add_callback(|event: &DatabaseEvent| {
         println!("Database event: {:?} on {}", event.event_type, event.table_name);
     });
@@ -137,12 +136,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dispatcher.auto_migrate::<User>(false).await?;
 
     // Create store with signals and cache
+    let cache_params = CacheParams::new(cache_manager.clone())
+        .with_ttl(900)                     // Cache TTL (15 min)
+        .with_prefix("users".to_string()); // Cache prefix
+
     let user_store = GenericStore::<User>::new(
         dispatcher.pool().clone(),
-        Some(dispatcher.signal_manager()), // Signals
-        Some(cache_manager),                // Cache
-        Some(900),                         // Cache TTL (15 min)
-        Some("users".to_string()),         // Cache prefix
+        Some(signal_manager.clone()),       // Signals
+        Some(cache_params),                 // Cache
     );
 
     dispatcher.register_store("users".to_string(), user_store)?;

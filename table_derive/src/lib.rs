@@ -11,9 +11,33 @@ use model_macro::model_attribute;
 
 /// Derive macro for TableMetadata trait
 ///
-/// Usage:
+/// Note: It's recommended to use the `#[model]` attribute macro instead,
+/// which automatically includes this derive along with other necessary derives.
+///
+/// Manual usage (not recommended):
 /// ```rust
-/// #[derive(TableMetadata)]
+/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, sqlx::Type, TableMetadata)]
+/// #[table(name = "customers")]
+/// pub struct Customer {
+///     #[primary_key]
+///     pub id: Uuid,
+///
+///     #[field(create, update)]
+///     pub first_name: String,
+///
+///     #[field(readonly)]
+///     pub created_at: DateTime<Utc>,
+///
+///     #[soft_delete]
+///     pub is_active: bool,
+/// }
+/// ```
+///
+/// Recommended usage:
+/// ```rust
+/// use table_derive::model;
+///
+/// #[model]
 /// #[table(name = "customers")]
 /// pub struct Customer {
 ///     #[primary_key]

@@ -2,12 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 /// Metadata about database table structure and operations
-/// This trait should be derived using #[derive(TableMetadata)]
+/// This trait should be derived using the `#[model]` attribute macro, which
+/// automatically includes all necessary derives.
 ///
-/// Attribute macros for field-level configuration
-/// Example usage:
+/// Recommended usage:
 /// ```
-/// #[derive(TableMetadata)]
+/// use table_derive::model;
+///
+/// #[model]
 /// #[table(name = "customers")]
 /// pub struct Customer {
 ///     #[primary_key]
@@ -21,6 +23,17 @@ use std::fmt::Debug;
 ///
 ///     #[soft_delete]
 ///     pub is_active: bool,
+/// }
+/// ```
+///
+/// Manual usage (not recommended):
+/// ```
+/// use table_derive::TableMetadata;
+///
+/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, sqlx::Type, TableMetadata)]
+/// #[table(name = "customers")]
+/// pub struct Customer {
+///     // fields...
 /// }
 /// ```
 pub trait TableMetadata: Clone + Send + Sync + Debug + Serialize + for<'de> Deserialize<'de> {
