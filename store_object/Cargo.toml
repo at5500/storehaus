@@ -1,0 +1,15 @@
+[package]
+name = "store-object"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+serde = { version = "1.0.226", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+thiserror = "1.0.69"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+signal_system = { path = "../signal_system" }
+cache_system = { path = "../cache_system" }
