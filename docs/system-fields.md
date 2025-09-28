@@ -87,11 +87,10 @@ use store_object::{QueryBuilder, QueryFilter};
 use serde_json::json;
 
 // Create operation - system fields are automatically populated
-let user = User {
-    id: Uuid::new_v4(),
-    name: "John Doe".to_string(),
-    email: "john@example.com".to_string(),
-};
+let user = User::new(
+    Uuid::new_v4(),
+    "John Doe".to_string(),
+);
 
 // __created_at__ and __updated_at__ are set automatically
 // __tags__ is set to provided tags or empty array

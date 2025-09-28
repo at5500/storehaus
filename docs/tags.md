@@ -22,11 +22,11 @@ Tags are automatically indexed for efficient searching and are included in all s
 use uuid::Uuid;
 
 // Create a user with registration tags
-let user = User {
-    id: Uuid::new_v4(),
-    name: "John Doe".to_string(),
-    email: "john@example.com".to_string(),
-};
+let user = User::new(
+    Uuid::new_v4(),
+    "John Doe".to_string(),
+    "john@example.com".to_string(),
+);
 
 // Tags are passed as optional parameter
 let created = user_store.create(
@@ -46,11 +46,11 @@ let created_no_tags = user_store.create(user, None).await?;
 
 ```rust
 // Update user profile with tracking tags
-let updated_user = User {
-    id: existing_id,
-    name: "John Smith".to_string(),  // Changed name
-    email: "john.smith@example.com".to_string(),
-};
+let updated_user = User::new(
+    existing_id,
+    "John Smith".to_string(),  // Changed name
+    "john.smith@example.com".to_string(),
+);
 
 let updated = user_store.update(
     &existing_id,

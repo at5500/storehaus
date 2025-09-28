@@ -19,9 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graceful fallback when Redis is unavailable
 - `#[model]` attribute macro for simplified model definitions
 - `CacheParams` struct for better cache configuration management
-- Modern ASCII architecture diagrams with visual icons
+- Modern ASCII architecture diagrams with visual icons and emojis
 - Configuration system support in documentation
 - Comprehensive type mapping documentation with examples
+- Complete `type_mapping` crate for Rust to PostgreSQL type conversion
+- Optional type support (Option<T>) for all basic types
+- RFC3339 timestamp parsing and automatic conversion
+- UUID string parsing in parameter binding
+- PostgreSQL array operations with `&&` overlap operator
+- JSONB type mapping for `serde_json::Value`
+- Comprehensive examples collection with learning path
+- Multiple documentation files (caching, signals, configuration, etc.)
+- Configuration system with TOML, environment variables, and validation
+- Prelude modules for all crates for easier imports
+- System fields management (__created_at__, __updated_at__, __tags__)
+- Soft delete support with automatic __is_active__ field
+- Tagged data operations for categorization and tracking
+- Validation system for data integrity
+- Error handling improvements with detailed error types
 
 ### Changed
 - **BREAKING**: Simplified `create` method API - removed unnecessary `CreateResult` type
@@ -38,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated ASCII architecture diagrams with modern icons and layout
   - Improved visual consistency across all documentation files
   - Fixed rectangular borders and alignment in diagrams
+  - Added emoji icons for better visual organization
+  - Reorganized component responsibilities and descriptions
+- Major codebase restructuring and improvements
+  - Moved from dispatcher-based to storehaus-centric architecture
+  - Reorganized crate structure for better modularity
+  - Updated all imports and exports to use prelude modules
+  - Improved error messages and debugging information
+- Enhanced type system and query capabilities
+  - Expanded type mapping to cover all common Rust types
+  - Added intelligent parameter binding with automatic type detection
+  - Improved query builder with more operators and filters
+  - Better handling of complex data types (JSONB, Arrays, UUIDs)
 - **BREAKING**: GenericStore constructor now accepts `CacheParams` instead of separate cache parameters
   - **Before**: `GenericStore::new(pool, signals, cache_manager, ttl, prefix)`
   - **After**: `GenericStore::new(pool, signals, cache_params)`
@@ -61,6 +88,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected feature descriptions to match actual implementation
 - Fixed ragged edges in ASCII architecture diagrams
 - Removed all remaining "dispatcher" references from documentation
+- Fixed type mapping issues for complex PostgreSQL types
+  - JSONB fields now correctly mapped instead of VARCHAR
+  - Optional types (Option<T>) properly handled in SQL generation
+  - UUID parameters correctly bound in queries
+  - RFC3339 timestamps automatically parsed and converted
+- Resolved SQL parameter binding errors
+  - Fixed "operator does not exist" errors for UUID comparisons
+  - Corrected timestamp comparison issues
+  - Implemented PostgreSQL array overlap operations
+- Fixed query builder SQL generation
+  - Resolved parameter spacing issues causing syntax errors
+  - Improved WHERE clause construction
+  - Better handling of complex filter conditions
+- Clippy warnings and code quality improvements
+  - Removed unnecessary borrowing and references
+  - Fixed collapsible match patterns
+  - Eliminated unused imports and variables
+  - Improved code documentation and comments
 - Duplicate email constraint errors in batch operations
 - Demo cleanup issues causing conflicts on repeated runs
 - Cache invalidation after update and delete operations

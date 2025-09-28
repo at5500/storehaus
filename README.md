@@ -176,11 +176,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_store = storehaus.get_store::<GenericStore<User>>("users")?;
 
     // CRUD operations
-    let user = User {
-        id: Uuid::new_v4(),
-        name: "John Doe".to_string(),
-        email: "john@example.com".to_string(),
-    };
+    let user = User::new(
+        Uuid::new_v4(),
+        "John Doe".to_string(),
+        "john@example.com".to_string(),
+    );
 
     let created = user_store.create(user, None).await?;
     println!("Created user: {}", created.name);
