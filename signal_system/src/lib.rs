@@ -1,10 +1,16 @@
+//! Signal system for database event handling
+//!
+//! This crate provides async signal handling and event processing
+//! for database operations in the Storehaus ecosystem.
+
 pub mod event;
-pub mod types;
 pub mod manager;
-pub mod conversion;
+pub mod prelude;
+pub mod types;
 
-pub use event::{EventType, DatabaseEvent};
-pub use types::{PostgresValue, EventCallback};
-pub use manager::SignalManager;
-pub use conversion::{ToPostgresPayload, serialize_to_postgres_payload, serialize_to_postgres_record};
-
+pub use event::{DatabaseEvent, EventType};
+pub use manager::{CallbackHandle, CallbackId, SignalConfig, SignalManager, SignalStats};
+pub use types::{
+    serialize_to_postgres_payload, serialize_to_postgres_record, EventCallback, PostgresValue,
+    ToPostgresPayload,
+};

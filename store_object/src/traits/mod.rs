@@ -4,12 +4,12 @@
 //! in the storehaus library.
 
 pub mod core;
-pub mod soft_deletable;
 pub mod filterable;
+pub mod soft_deletable;
 pub mod table_metadata;
 
 // Re-export all public items for convenience
 pub use core::StoreObject;
+pub use filterable::{Filterable, StoreFilter};
 pub use soft_deletable::SoftDeletable;
-pub use filterable::{StoreFilter, Filterable};
 pub use table_metadata::TableMetadata;

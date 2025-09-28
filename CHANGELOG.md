@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graceful fallback when Redis is unavailable
 - `#[model]` attribute macro for simplified model definitions
 - `CacheParams` struct for better cache configuration management
+- Modern ASCII architecture diagrams with visual icons
+- Configuration system support in documentation
+- Comprehensive type mapping documentation with examples
 
 ### Changed
 - **BREAKING**: Simplified `create` method API - removed unnecessary `CreateResult` type
@@ -27,7 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: SignalManager architecture refactored for better flexibility
   - SignalManager now created externally like CacheManager
   - Removed enable/disable methods - SignalManager always active when provided
-  - Removed SignalManager from Dispatcher - now passed directly to stores
+  - Removed SignalManager from StoreHaus - now passed directly to stores
+- **BREAKING**: Renamed `Dispatcher` to `StoreHaus` throughout the codebase
+  - Updated all struct names, method calls, and documentation
+  - Improved brand consistency and API clarity
+- Enhanced documentation structure and visual presentation
+  - Updated ASCII architecture diagrams with modern icons and layout
+  - Improved visual consistency across all documentation files
+  - Fixed rectangular borders and alignment in diagrams
 - **BREAKING**: GenericStore constructor now accepts `CacheParams` instead of separate cache parameters
   - **Before**: `GenericStore::new(pool, signals, cache_manager, ttl, prefix)`
   - **After**: `GenericStore::new(pool, signals, cache_params)`
@@ -47,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved demo output with clearer progress indicators and test results
 
 ### Fixed
+- Removed unimplemented Transaction Support from documentation and diagrams
+- Corrected feature descriptions to match actual implementation
+- Fixed ragged edges in ASCII architecture diagrams
+- Removed all remaining "dispatcher" references from documentation
 - Duplicate email constraint errors in batch operations
 - Demo cleanup issues causing conflicts on repeated runs
 - Cache invalidation after update and delete operations

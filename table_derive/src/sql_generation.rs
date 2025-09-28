@@ -1,32 +1,89 @@
+//! SQL code generation for database operations
+//!
+//! This module generates SQL queries and Rust code for database operations
+//! based on parsed table and field metadata.
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
-use crate::parsing::FieldInfo;
+use crate::parsing::{FieldInfo, TableInfo};
+
+/// Validate and escape SQL identifier to prevent injection
+/// This function ensures that field names are safe for SQL generation
+/// Note: Table and field names are already validated at parse time,
+/// so this is an additional safety check
+fn safe_sql_identifier(name: &str) -> String {
+    // At this point, names should already be validated by parsing stage
+    // This is a defensive check to ensure no invalid names slip through
+
+    // Basic validation (should never fail if parsing validation worked)
+    if name.is_empty() {
+        panic!("SQL identifier cannot be empty");
+    }
+
+    if name.len() > 63 {
+        panic!(
+            "SQL identifier '{}' is too long: {} characters (max 63)",
+            name,
+            name.len()
+        );
+    }
+
+    // Check characters (should already be validated)
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        panic!("SQL identifier '{}' contains invalid characters", name);
+    }
+
+    // Check first character
+    let first_char = name
+        .chars()
+        .next()
+        .unwrap_or_else(|| panic!("SQL identifier cannot be empty"));
+    if !first_char.is_ascii_alphabetic() && first_char != '_' {
+        panic!(
+            "SQL identifier '{}' must start with letter or underscore",
+            name
+        );
+    }
+
+    // Use double quotes to safely escape the identifier
+    // This protects against any edge cases and reserved words
+    format!("\"{}\"", name)
+}
 
 pub fn generate_table_metadata_impl(
     name: &Ident,
-    table_name: &str,
+    table_info: &TableInfo,
     field_info: &FieldInfo,
 ) -> TokenStream {
+    let table_name = &table_info.name;
+
     let primary_key_field = &field_info.primary_key_field;
     let primary_key_type = &field_info.primary_key_type;
     let create_fields = &field_info.create_fields;
     let update_fields = &field_info.update_fields;
-    let has_soft_delete = field_info.has_soft_delete;
-    let _field_types = &field_info.field_types;
+    let soft_delete_field = &field_info.soft_delete_field;
 
     // Parse the primary key type into a TokenStream
-    let primary_key_type_tokens: proc_macro2::TokenStream = primary_key_type.parse().unwrap();
+    let primary_key_type_tokens: TokenStream = primary_key_type.parse().unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse primary key type '{}': {}",
+            primary_key_type, e
+        )
+    });
 
     // Generate CREATE SQL
-    let create_field_names: Vec<_> = create_fields.iter().map(|f| f.as_str()).collect();
+    let create_field_names: Vec<_> = create_fields
+        .iter()
+        .map(|f| safe_sql_identifier(f))
+        .collect();
     let create_placeholders: Vec<_> = (1..=create_fields.len())
         .map(|i| format!("${}", i))
         .collect();
     let create_sql = format!(
-        "INSERT INTO {} ({}, created_at, updated_at) VALUES ({}, NOW(), NOW()) RETURNING *",
-        table_name,
+        "INSERT INTO {} ({}, __created_at__, __updated_at__) VALUES ({}, NOW(), NOW()) RETURNING *",
+        safe_sql_identifier(table_name),
         create_field_names.join(", "),
         create_placeholders.join(", ")
     );
@@ -35,14 +92,55 @@ pub fn generate_table_metadata_impl(
     let update_assignments: Vec<_> = update_fields
         .iter()
         .enumerate()
-        .map(|(i, field)| format!("{} = ${}", field, i + 1))
+        .map(|(i, field)| format!("{} = ${}", safe_sql_identifier(field), i + 1))
         .collect();
     let update_sql = format!(
-        "UPDATE {} SET {}, updated_at = NOW() WHERE id = ${} RETURNING *",
-        table_name,
+        "UPDATE {} SET {}, __updated_at__ = NOW() WHERE {} = ${} RETURNING *",
+        safe_sql_identifier(table_name),
         update_assignments.join(", "),
+        safe_sql_identifier(&primary_key_field.to_string()),
         update_fields.len() + 1
     );
+
+    // Generate LIST_ALL SQL
+    let list_all_sql = if let Some(soft_delete_field_name) = soft_delete_field {
+        format!(
+            "SELECT * FROM {} WHERE {} = TRUE ORDER BY \"__created_at__\" DESC",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(soft_delete_field_name)
+        )
+    } else {
+        format!(
+            "SELECT * FROM {} ORDER BY \"__created_at__\" DESC",
+            safe_sql_identifier(table_name)
+        )
+    };
+
+    // Generate DELETE_BY_ID SQL
+    let delete_by_id_sql = format!(
+        "DELETE FROM {} WHERE {} = $1",
+        safe_sql_identifier(table_name),
+        safe_sql_identifier(&primary_key_field.to_string())
+    );
+
+    // Generate GET_BY_ID SQL
+    let get_by_id_sql = format!(
+        "SELECT * FROM {} WHERE {} = $1",
+        safe_sql_identifier(table_name),
+        safe_sql_identifier(&primary_key_field.to_string())
+    );
+
+    // Generate COUNT_ALL SQL
+    let count_all_sql = format!(
+        "SELECT COUNT(*) as total FROM {}",
+        safe_sql_identifier(table_name)
+    );
+
+    // Generate SELECT_BASE SQL
+    let select_base_sql = format!("SELECT * FROM {}", safe_sql_identifier(table_name));
+
+    // Generate COUNT_BASE SQL
+    let count_base_sql = format!("SELECT COUNT(*) FROM {}", safe_sql_identifier(table_name));
 
     let create_fields_vec = quote! {
         vec![#(#create_fields),*]
@@ -52,21 +150,25 @@ pub fn generate_table_metadata_impl(
         vec![#(#update_fields),*]
     };
 
-    // Generate binding expressions for create fields
-    let create_bind_calls: Vec<_> = create_fields.iter().map(|field_name| {
-        let field_ident: proc_macro2::Ident = syn::Ident::new(field_name, proc_macro2::Span::call_site());
-        quote! { .bind(&self.#field_ident) }
-    }).collect();
+    let soft_delete_field_option = match soft_delete_field {
+        Some(field) => quote! { Some(#field) },
+        None => quote! { None },
+    };
+
+    let has_soft_delete = soft_delete_field.is_some();
 
     // Generate binding expressions for update fields
-    let update_bind_calls: Vec<_> = update_fields.iter().map(|field_name| {
-        let field_ident: proc_macro2::Ident = syn::Ident::new(field_name, proc_macro2::Span::call_site());
-        quote! { .bind(&self.#field_ident) }
-    }).collect();
-
+    let _bind_calls: Vec<_> = update_fields
+        .iter()
+        .map(|field_name| {
+            let field_ident: proc_macro2::Ident =
+                Ident::new(field_name, proc_macro2::Span::call_site());
+            quote! { .bind(self.#field_ident.clone()) }
+        })
+        .collect();
 
     quote! {
-        impl TableMetadata for #name {
+        impl store_object::TableMetadata for #name {
             type Id = #primary_key_type_tokens;
 
             fn table_name() -> &'static str {
@@ -81,8 +183,36 @@ pub fn generate_table_metadata_impl(
                 #update_sql
             }
 
+            fn list_all_sql() -> &'static str {
+                #list_all_sql
+            }
+
+            fn delete_by_id_sql() -> &'static str {
+                #delete_by_id_sql
+            }
+
+            fn get_by_id_sql() -> &'static str {
+                #get_by_id_sql
+            }
+
+            fn count_all_sql() -> &'static str {
+                #count_all_sql
+            }
+
+            fn select_base_sql() -> &'static str {
+                #select_base_sql
+            }
+
+            fn count_base_sql() -> &'static str {
+                #count_base_sql
+            }
+
             fn supports_soft_delete() -> bool {
                 #has_soft_delete
+            }
+
+            fn soft_delete_field() -> Option<&'static str> {
+                #soft_delete_field_option
             }
 
             fn extract_id(&self) -> Self::Id {
@@ -113,60 +243,26 @@ pub fn generate_table_metadata_impl(
                 Self::generate_indexes_sql()
             }
 
-            fn execute_create(&self, pool: &sqlx::PgPool) -> impl std::future::Future<Output = Result<Self, sqlx::Error>> + Send
+            // Database operations moved to DatabaseExecutor trait
+
+            fn bind_update_params_owned<'a>(
+                &'a self,
+                sql: &'a str
+            ) -> sqlx::query::QueryAs<'a, sqlx::Postgres, Self, sqlx::postgres::PgArguments>
             where
-                Self: Sized + for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Sync
+                Self: Sized
             {
-                let sql = Self::create_sql();
-                async move {
-                    sqlx::query_as::<_, Self>(sql)
-                        #(#create_bind_calls)*
-                        .fetch_one(pool)
-                        .await
-                }
+                let query = sqlx::query_as::<_, Self>(sql);
+                query #(#_bind_calls)*
             }
 
-            fn execute_update(&self, pool: &sqlx::PgPool) -> impl std::future::Future<Output = Result<Self, sqlx::Error>> + Send
-            where
-                Self: Sized + for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Sync
+            fn bind_update_params_raw_owned<'a>(
+                &'a self,
+                sql: &'a str
+            ) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>
             {
-                let sql = Self::update_sql();
-                let id = self.extract_id();
-                async move {
-                    sqlx::query_as::<_, Self>(sql)
-                        #(#update_bind_calls)*
-                        .bind(&id)
-                        .fetch_one(pool)
-                        .await
-                }
-            }
-
-            fn execute_create_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> impl std::future::Future<Output = Result<Self, sqlx::Error>> + Send
-            where
-                Self: Sized + for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Sync
-            {
-                let sql = Self::create_sql();
-                async move {
-                    sqlx::query_as::<_, Self>(sql)
-                        #(#create_bind_calls)*
-                        .fetch_one(tx.as_mut())
-                        .await
-                }
-            }
-
-            fn execute_update_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> impl std::future::Future<Output = Result<Self, sqlx::Error>> + Send
-            where
-                Self: Sized + for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Sync
-            {
-                let sql = Self::update_sql();
-                let id = self.extract_id();
-                async move {
-                    sqlx::query_as::<_, Self>(sql)
-                        #(#update_bind_calls)*
-                        .bind(&id)
-                        .fetch_one(tx.as_mut())
-                        .await
-                }
+                let query = sqlx::query(sql);
+                query #(#_bind_calls)*
             }
 
         }
@@ -175,23 +271,38 @@ pub fn generate_table_metadata_impl(
 
 pub fn generate_helper_impl(
     name: &Ident,
-    table_name: &str,
+    table_info: &TableInfo,
     field_info: &FieldInfo,
 ) -> TokenStream {
+    let table_name = &table_info.name;
+    let has_auto_increment = &table_info.has_auto_increment;
+
     let primary_key_field = &field_info.primary_key_field;
     let primary_key_type = &field_info.primary_key_type;
-    let has_soft_delete = field_info.has_soft_delete;
-    let has_auto_increment = field_info.has_auto_increment;
-    let auto_increment_field = field_info.auto_increment_field.as_ref().unwrap_or(&String::new()).clone();
+    let soft_delete_field = &field_info.soft_delete_field;
 
     // Parse the primary key type into a TokenStream
-    let primary_key_type_tokens: proc_macro2::TokenStream = primary_key_type.parse().unwrap();
+    let primary_key_type_tokens: TokenStream = primary_key_type.parse().unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse primary key type '{}': {}",
+            primary_key_type, e
+        )
+    });
+
+    // Generate proper soft_delete_field token for use in conditionals
+    let soft_delete_field_option = match soft_delete_field {
+        Some(field) => quote! { Some(#field) },
+        None => quote! { None },
+    };
 
     // Generate field type mappings for compile-time injection
-    let field_type_mappings: Vec<_> = field_info.field_types.iter()
+    let field_type_mappings: Vec<_> = field_info
+        .field_types
+        .iter()
         .map(|(name, rust_type)| {
+            let rust_type_str = rust_type.as_str();
             quote! {
-                types.insert(#name, #rust_type);
+                types.insert(#name, #rust_type_str);
             }
         })
         .collect();
@@ -199,6 +310,17 @@ pub fn generate_helper_impl(
     quote! {
         // Generate helper methods for DDL operations in a separate impl block
         impl #name {
+            // Helper function for safe SQL identifiers
+            fn safe_sql_identifier(name: &str) -> String {
+                // At this point, names should already be validated by parsing stage
+                // This is a defensive check to ensure no invalid names slip through
+                if name.is_empty() {
+                    return "\"\"".to_string();
+                }
+
+                // Quote SQL identifiers to prevent keyword conflicts
+                format!("\"{}\"", name.replace("\"", "\"\""))
+            }
             fn generate_create_table_sql() -> String {
                 let table_name = #table_name;
 
@@ -213,7 +335,10 @@ pub fn generate_helper_impl(
                 let pk_rust_type = stringify!(#primary_key_type_tokens);
 
                 // Determine if this is an auto-increment field
-                let is_pk_auto_increment = #has_auto_increment && #auto_increment_field == pk_field_name;
+                let is_pk_auto_increment = {
+                    let has_auto_inc = #has_auto_increment;
+                    has_auto_inc
+                };
 
                 let (pk_pg_type, pk_default) = if is_pk_auto_increment {
                     // Use SERIAL types for auto-increment fields
@@ -246,28 +371,38 @@ pub fn generate_helper_impl(
                     if field_name != pk_field_name {
                         if let Some(rust_type) = field_types.get(field_name) {
                             let pg_type = Self::rust_type_to_pg_type(rust_type);
-                            let constraint = " NOT NULL";
-                            field_definitions.push(format!("{} {}{}", field_name, pg_type, constraint));
+                            let constraint = if type_mapping::is_optional_type(rust_type) {
+                                ""  // Optional types are nullable
+                            } else {
+                                " NOT NULL"  // Required types are NOT NULL
+                            };
+                            let safe_field_name = Self::safe_sql_identifier(field_name);
+                            field_definitions.push(format!("{} {}{}", safe_field_name, pg_type, constraint));
                         } else {
                             // Fallback: если тип не найден, используем VARCHAR
                             println!("Warning: No type found for field {}, using VARCHAR", field_name);
-                            field_definitions.push(format!("{} VARCHAR NOT NULL", field_name));
+                            let safe_field_name = Self::safe_sql_identifier(field_name);
+                            field_definitions.push(format!("{} VARCHAR NOT NULL", safe_field_name));
                         }
                     }
                 }
 
-                // Add readonly fields (timestamps)
-                field_definitions.push("created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()".to_string());
-                field_definitions.push("updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()".to_string());
+                // Add readonly system fields (timestamps)
+                field_definitions.push("__created_at__ TIMESTAMP WITH TIME ZONE DEFAULT NOW()".to_string());
+                field_definitions.push("__updated_at__ TIMESTAMP WITH TIME ZONE DEFAULT NOW()".to_string());
 
-                // Add soft delete field if present
-                if #has_soft_delete {
-                    field_definitions.push("is_active BOOLEAN DEFAULT TRUE".to_string());
+                // Add soft delete system field if present
+                if let Some(soft_delete_field_name) = #soft_delete_field_option {
+                    let safe_field_name = Self::safe_sql_identifier(soft_delete_field_name);
+                    field_definitions.push(format!("{} BOOLEAN DEFAULT TRUE", safe_field_name));
                 }
+
+                // Add tags field for tagging operations
+                field_definitions.push("__tags__ TEXT[] DEFAULT '{}'".to_string());
 
                 format!(
                     "CREATE TABLE IF NOT EXISTS {} ({})",
-                    table_name,
+                    Self::safe_sql_identifier(table_name),
                     field_definitions.join(", ")
                 )
             }
@@ -285,11 +420,11 @@ pub fn generate_helper_impl(
                     }
                 }
 
-                fields.push(("created_at", "TIMESTAMP WITH TIME ZONE"));
-                fields.push(("updated_at", "TIMESTAMP WITH TIME ZONE"));
+                fields.push(("__created_at__", "TIMESTAMP WITH TIME ZONE"));
+                fields.push(("__updated_at__", "TIMESTAMP WITH TIME ZONE"));
 
-                if #has_soft_delete {
-                    fields.push(("is_active", "BOOLEAN"));
+                if let Some(soft_delete_field_name) = #soft_delete_field_option {
+                    fields.push((soft_delete_field_name, "BOOLEAN"));
                 }
 
                 fields
@@ -297,53 +432,41 @@ pub fn generate_helper_impl(
 
             fn generate_indexes_sql() -> Vec<String> {
                 let table_name = #table_name;
+                let safe_table_name = Self::safe_sql_identifier(table_name);
                 let mut indexes = Vec::new();
 
                 // Add index for soft delete if present
-                if #has_soft_delete {
+                if let Some(soft_delete_field_name) = #soft_delete_field_option {
+                    let safe_field_name = Self::safe_sql_identifier(soft_delete_field_name);
                     indexes.push(format!(
-                        "CREATE INDEX IF NOT EXISTS idx_{}_{} ON {}({})",
-                        table_name, "is_active", table_name, "is_active"
+                        "CREATE INDEX IF NOT EXISTS idx_{}_{} ON {} ({})",
+                        table_name, soft_delete_field_name, safe_table_name, safe_field_name
                     ));
                 }
 
-                // Add created_at index
+                // Add __created_at__ index
                 indexes.push(format!(
-                    "CREATE INDEX IF NOT EXISTS idx_{}_{} ON {}({})",
-                    table_name, "created_at", table_name, "created_at"
+                    "CREATE INDEX IF NOT EXISTS idx_{}_created_at ON {} (\"__created_at__\")",
+                    table_name, safe_table_name
+                ));
+
+                // Add __updated_at__ index
+                indexes.push(format!(
+                    "CREATE INDEX IF NOT EXISTS idx_{}_updated_at ON {} (\"__updated_at__\")",
+                    table_name, safe_table_name
+                ));
+
+                // Add GIN index for tags array for efficient tag searching
+                indexes.push(format!(
+                    "CREATE INDEX IF NOT EXISTS idx_{}_tags ON {} USING GIN(\"__tags__\")",
+                    table_name, safe_table_name
                 ));
 
                 indexes
             }
 
             fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
-                match rust_type.trim() {
-                    "Uuid" | "uuid :: Uuid" | "uuid::Uuid" => "UUID",
-                    "String" => "VARCHAR",
-                    "i8" => "SMALLINT",
-                    "i16" => "SMALLINT",
-                    "i32" => "INTEGER",
-                    "i64" => "BIGINT",
-                    "u16" => "INTEGER",
-                    "u32" => "BIGINT",
-                    "u64" => "NUMERIC(20,0)", // PostgreSQL doesn't have native u64
-                    "f32" => "REAL",
-                    "f64" => "DOUBLE PRECISION",
-                    "bool" => "BOOLEAN",
-                    "chrono :: DateTime < chrono :: Utc >" |
-                    "chrono::DateTime<chrono::Utc>" |
-                    "chrono :: NaiveDateTime" |
-                    "chrono::NaiveDateTime" => "TIMESTAMP WITH TIME ZONE",
-                    "chrono :: Date < chrono :: Utc >" |
-                    "chrono::Date<chrono::Utc>" |
-                    "chrono :: NaiveDate" |
-                    "chrono::NaiveDate" => "DATE",
-                    "rust_decimal :: Decimal" |
-                    "rust_decimal::Decimal" => "NUMERIC(28,10)",
-                    "bigdecimal :: BigDecimal" |
-                    "bigdecimal::BigDecimal" => "NUMERIC",
-                    _ => "VARCHAR" // default fallback
-                }
+                type_mapping::rust_type_to_pg_type(rust_type)
             }
 
             fn get_field_types() -> std::collections::HashMap<&'static str, &'static str> {
@@ -359,3 +482,88 @@ pub fn generate_helper_impl(
     }
 }
 
+/// Generate DatabaseExecutor trait implementation with proper async methods
+pub fn generate_database_executor_impl(name: &Ident, field_info: &FieldInfo) -> TokenStream {
+    // Generate binding expressions for create fields
+    let create_bind_calls: Vec<_> = field_info
+        .create_fields
+        .iter()
+        .map(|field_name| {
+            let field_ident: proc_macro2::Ident =
+                Ident::new(field_name, proc_macro2::Span::call_site());
+            quote! { .bind(self.#field_ident.clone()) }
+        })
+        .collect();
+
+    // Generate binding expressions for update fields
+    let update_bind_calls: Vec<_> = field_info
+        .update_fields
+        .iter()
+        .map(|field_name| {
+            let field_ident: proc_macro2::Ident =
+                Ident::new(field_name, proc_macro2::Span::call_site());
+            quote! { .bind(self.#field_ident.clone()) }
+        })
+        .collect();
+
+    quote! {
+        #[async_trait::async_trait]
+        impl store_object::DatabaseExecutor for #name {
+            async fn execute_create(&self, pool: &sqlx::PgPool) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::create_sql();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#create_bind_calls)*
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "create", e))
+            }
+
+            async fn execute_update(&self, pool: &sqlx::PgPool) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::update_sql();
+                let id = self.extract_id();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#update_bind_calls)*
+                    .bind(&id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
+            }
+
+            async fn execute_create_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::create_sql();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#create_bind_calls)*
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "create", e))
+            }
+
+            async fn execute_update_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::update_sql();
+                let id = self.extract_id();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#update_bind_calls)*
+                    .bind(&id)
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
+            }
+        }
+    }
+}

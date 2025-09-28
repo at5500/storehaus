@@ -1,23 +1,24 @@
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
+//! Type definitions for signal system
+//!
+//! This module contains PostgreSQL value types and serialization
+//! utilities for the signal system.
 
 use crate::event::DatabaseEvent;
+use futures::future::BoxFuture;
+use std::sync::Arc;
 
-/// PostgreSQL data types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PostgresValue {
-    Text(String),
-    Integer(i32),
-    BigInt(i64),
-    SmallInt(i16),
-    Boolean(bool),
-    Uuid(Uuid),
-    Timestamp(chrono::DateTime<chrono::Utc>),
-    Decimal(String), // Store as string to preserve precision
-    Json(serde_json::Value),
-    Record(std::collections::HashMap<String, PostgresValue>), // Associative array for full records
-    Null,
+// Re-export from type-mapping for convenience
+pub use type_mapping::{
+    serialize_to_postgres_payload, serialize_to_postgres_record, PostgresValue, ToPostgresPayload,
+};
+
+/// Async event callback type that returns a Result
+pub type EventCallback =
+    Arc<dyn Fn(DatabaseEvent) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync>;
+
+/// Event processing error
+#[derive(Debug)]
+pub struct EventProcessingError {
+    pub callback_index: usize,
+    pub error: anyhow::Error,
 }
-
-/// Event callback type
-pub type EventCallback = Box<dyn Fn(&DatabaseEvent) + Send + Sync>;

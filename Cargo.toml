@@ -1,10 +1,77 @@
+[package]
+name = "storehaus"
+version = "0.1.0"
+edition = "2024"
+description = "A modern Rust database abstraction library for PostgreSQL with automatic code generation, signals, caching, and advanced query capabilities"
+license = "MIT"
+repository = "https://github.com/yourusername/storehaus"
+keywords = ["database", "postgresql", "orm", "async", "cache"]
+categories = ["database", "web-programming"]
+
 [workspace]
 resolver = "3"
-#default-members = ["dispatcher"]
 members = [
-    "dispatcher",
-    "store_object",
-    "table_derive",
     "signal_system",
-    "cache_system"
+    "cache_system",
+    "type_mapping",
+    "table_derive",
+    "store_object",
+    "config"
 ]
+
+[dependencies]
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono"] }
+tokio = { version = "1.0", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+async-trait = "0.1"
+anyhow = "1.0"
+store-object = { path = "./store_object" }
+table-derive = { path = "./table_derive" }
+signal-system = { path = "./signal_system" }
+cache-system = { path = "./cache_system" }
+config = { path = "./config" }
+type-mapping = { path = "./type_mapping" }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.9.2"
+tracing = "0.1"
+
+# Quick demo and main examples
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+
+# Getting Started Examples
+[[example]]
+name = "01_basic_usage"
+path = "examples/01_basic_usage.rs"
+
+[[example]]
+name = "02_model_definition"
+path = "examples/02_model_definition.rs"
+
+# Signal System Examples
+[[example]]
+name = "signals_basic"
+path = "examples/signals_basic.rs"
+
+# Caching Examples
+[[example]]
+name = "caching_basic"
+path = "examples/caching_basic.rs"
+
+# Real-World Applications
+[[example]]
+name = "ecommerce_demo"
+path = "examples/ecommerce_demo.rs"
+
+[[example]]
+name = "blog_system"
+path = "examples/blog_system.rs"
+
+# Legacy examples (preserved for compatibility)
+[[example]]
+name = "tags_demo"
+path = "examples/tags_demo.rs"

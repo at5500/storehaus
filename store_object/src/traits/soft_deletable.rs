@@ -1,8 +1,12 @@
-use async_trait::async_trait;
-use crate::StorehausError;
-use super::core::StoreObject;
+//! Trait definitions
+//!
+//! This module defines core traits for database operations.
 
-/// Trait for objects that support soft deletion (is_active field)
+use super::core::StoreObject;
+use crate::StorehausError;
+use async_trait::async_trait;
+
+/// Trait for objects that support soft deletion (field marked with #[soft_delete])
 #[async_trait]
 pub trait SoftDeletable: StoreObject {
     /// List only active objects

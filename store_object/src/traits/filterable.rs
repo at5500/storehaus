@@ -1,6 +1,10 @@
-use async_trait::async_trait;
-use crate::StorehausError;
+//! Trait definitions
+//!
+//! This module defines core traits for database operations.
+
 use super::core::StoreObject;
+use crate::StorehausError;
+use async_trait::async_trait;
 
 /// Generic filter for database queries
 #[derive(Clone, Debug)]
@@ -50,5 +54,8 @@ impl Default for StoreFilter {
 #[async_trait]
 pub trait Filterable: StoreObject {
     /// List objects filtered by some criteria
-    async fn list_by_filter(&self, filter: &StoreFilter) -> Result<Vec<Self::Model>, StorehausError>;
+    async fn list_by_filter(
+        &self,
+        filter: &StoreFilter,
+    ) -> Result<Vec<Self::Model>, StorehausError>;
 }

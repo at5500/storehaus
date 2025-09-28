@@ -1,77 +1,134 @@
-# = StoreHaus =
+#  /// StoreHaus ///
 
-A Rust database abstraction library with automatic code generation for PostgreSQL, featuring signals, caching, and advanced query capabilities.
+A modern Rust database abstraction library for PostgreSQL with automatic code generation, signals, caching, and advanced query capabilities.
 
-## Architecture
+## 🏗️ Architecture
 
-- **`store_object/`** - Core library with database traits and generic store implementation
-- **`table_derive/`** - Derive macro for automatic table metadata generation
-- **`dispatcher/`** - Database connection manager and store registry
-- **`signal_system/`** - Database event notifications and monitoring
-- **`cache_system/`** - Redis-based caching layer for performance optimization
+StoreHaus follows a layered architecture with clear separation of concerns and no circular dependencies:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       🏠 STOREHAUS                              │
+│                    (Application Layer)                          │
+│  • 🎯 Unified Database API        • 🔧 Store Management        │
+│  • 🚀 Component Orchestration     • ⚙️  Configuration          │
+│  • 🏗️  Application Logic          • 🔄 Auto-Migration          │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────────┐
+│                   📦 STORE_OBJECT                               │
+│                   (Database Layer)                              │
+│  • 🗄️  CRUD Operations            • 🔍 Advanced Queries        │
+│  • 🔗 Query Builder               • 🏷️  Tagging System         │
+│  • ⚠️  Error Handling             • 🔧 System Fields           │
+│  • 🔌 Integration Layer           • 📊 Batch Operations        │
+└─────┬─────────────┬─────────────┬─────────────┬─────────────────┘
+      │             │             │             │
+┌─────▼────┐ ┌──────▼────┐ ┌──────▼────┐ ┌──────▼──────┐
+│ 📡 SIGNAL │ │ ⚡ CACHE  │ │ 🛠️ TABLE  │ │ ⚙️ CONFIG   │
+│  SYSTEM   │ │  SYSTEM   │ │  DERIVE   │ │  SYSTEM     │
+│           │ │           │ │           │ │             │
+│• Events   │ │• Redis    │ │• SQL Gen  │ │• TOML       │
+│• Callbacks│ │• TTL      │ │• Macros   │ │• Env Vars   │
+│• Async    │ │• Keys     │ │• Analysis │ │• Validation │
+│• WAL      │ │• LRU      │ │• Meta     │ │• Defaults   │
+└──────────┘ └───────────┘ └───────────┘ └─────────────┘
+```
+
+### Component Dependencies
+
+```mermaid
+graph TD
+    subgraph "Application Layer"
+        A[StoreHaus Main Crate]
+    end
+
+    subgraph "Core Database Layer"
+        B[Store Object]
+    end
+
+    subgraph "Supporting Components"
+        C[Signal System]
+        D[Cache System]
+        E[Table Derive]
+        F[Configuration]
+    end
+
+    subgraph "External Services"
+        G[(PostgreSQL)]
+        H[(Redis)]
+    end
+
+    A --> B
+    A --> F
+    B --> C
+    B --> D
+    B --> E
+    B --> G
+    C --> G
+    D --> H
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#e8f5e8
+    style E fill:#e8f5e8
+    style F fill:#e8f5e8
+    style G fill:#fff3e0
+    style H fill:#fff3e0
+```
+
+### Dependency Flow
+- **🏠 Application Level**: `storehaus` → orchestrates all components
+- **📦 Database Level**: `store_object` → core database operations
+- **⚙️ Supporting Level**: Independent specialized components
+  - 📡 `signal_system` → event management
+  - ⚡ `cache_system` → performance optimization
+  - 🛠️ `table_derive` → code generation
+  - ⚙️ `config` → configuration management
+
+This design prevents circular dependencies and ensures clean, maintainable architecture.
+
+### Crate Responsibilities
+
+| Crate | Level | Purpose | Key Features |
+|-------|-------|---------|--------------|
+| **storehaus** 🏠 | Application | Main orchestration | • 🎯 Unified Database API<br>• 🔧 Store Management<br>• 🏗️ Business Logic<br>• 🔄 Auto-Migration |
+| **store_object** 📦 | Database | Core operations | • 🗄️ CRUD Operations<br>• 🔍 Advanced Queries<br>• 🏷️ Tagging System<br>• 📊 Batch Operations |
+| **signal_system** 📡 | Supporting | Event management | • 📨 Async Events<br>• 🔄 Type-safe Callbacks<br>• 📊 WAL Integration<br>• ⚡ Real-time Notifications |
+| **cache_system** ⚡ | Supporting | Performance layer | • 🚀 Redis Integration<br>• ⏰ TTL Management<br>• 🔑 Smart Key Generation<br>• 📈 LRU Optimization |
+| **table_derive** 🛠️ | Supporting | Code generation | • 🔨 Proc Macros<br>• 🗄️ SQL Generation<br>• 🔍 Field Analysis<br>• 📋 Metadata Extraction |
+| **config** ⚙️ | Supporting | Configuration | • 📄 TOML Support<br>• 🌐 Environment Variables<br>• ✅ Validation<br>• 🔧 Defaults Management |
+
+## 🎯 System Overview
+
+StoreHaus provides a comprehensive, high-level interface for database operations, automating routine tasks and offering powerful data management features:
+
+- **🔧 Automatic System Fields** - `__created_at__`, `__updated_at__`, soft delete, `__tags__`
+- **🏷️ Operation Tagging** - categorize and track database operations
+- **📡 Event System** - real-time database event monitoring and callbacks
+- **⚡ Redis Caching** - intelligent performance optimization with TTL
+- **🔄 Auto-Migration** - seamless schema management and evolution
+- **🔍 Advanced Queries** - powerful query builder with filtering, sorting, pagination
 
 ## Quick Start
 
-### Prerequisites
+### Installation
 
-- Rust 1.75+
-- Docker and Docker Compose
-- Make (optional, but recommended)
-- Redis (optional, for caching features)
+```toml
+[dependencies]
+storehaus = { path = "./" }
+tokio = { version = "1.0", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+```
 
-### Setup
-
-1. **Clone and build the project:**
-   ```bash
-   git clone <repo>
-   cd storehaus
-   make setup
-   ```
-
-2. **Start the database:**
-   ```bash
-   make docker-up
-   ```
-
-3. **Run the demo:**
-   ```bash
-   make demo
-   # Or with Redis cache support:
-   make demo-with-cache
-   # Or automatic setup + demo:
-   make demo-full
-   ```
-
-### Manual Setup (without Make)
-
-1. **Start services:**
-   ```bash
-   # PostgreSQL only
-   docker-compose up -d postgres
-
-   # PostgreSQL + Redis for caching
-   docker-compose up -d postgres redis
-   ```
-
-2. **Build the project:**
-   ```bash
-   cargo build
-   ```
-
-3. **Run demo:**
-   ```bash
-   cd dispatcher
-   cargo run --example demo
-   ```
-
-## Usage
-
-### Define a Model
+### Basic Example
 
 ```rust
-use table_derive::model;
-use uuid::Uuid;
+use storehaus::prelude::*;
 
+// Define a model
 #[model]
 #[table(name = "users")]
 pub struct User {
@@ -83,194 +140,313 @@ pub struct User {
 
     #[field(create, update)]
     pub email: String,
-
-    #[field(readonly)]
-    pub created_at: chrono::DateTime<chrono::Utc>,
-
-    #[field(readonly)]
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-
-    #[soft_delete]
-    pub is_active: bool,
 }
-```
-
-### Use the Dispatcher
-
-```rust
-use dispatcher::{DatabaseConfig, Dispatcher};
-use store_object::{generic_store::{GenericStore, CacheParams}, QueryBuilder, QueryFilter, SortOrder};
-use signal_system::{DatabaseEvent, SignalManager};
-use cache_system::{CacheConfig, CacheManager};
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure database
+    // Database configuration with connection pool settings
     let config = DatabaseConfig::new(
-        "localhost".to_string(),
-        5432,
-        "storehaus".to_string(),
-        "postgres".to_string(),
-        "password".to_string(),
-    ).with_max_connections(5);
-
-    // Create dispatcher
-    let mut dispatcher = Dispatcher::new(config).await?;
-
-    // Setup signals (optional)
-    let signal_manager = std::sync::Arc::new(SignalManager::new());
-    signal_manager.add_callback(|event: &DatabaseEvent| {
-        println!("Database event: {:?} on {}", event.event_type, event.table_name);
-    });
-
-    // Setup cache (optional)
-    let cache_config = CacheConfig::new(
-        "redis://localhost:6379".to_string(),
-        1800, // TTL in seconds
-        "myapp".to_string(),
+        "localhost".to_string(),        // host
+        5432,                          // port
+        "storehaus".to_string(),       // database
+        "postgres".to_string(),        // username
+        "password".to_string(),        // password
+        1,                             // min_connections
+        10,                            // max_connections
+        30,                            // connection_timeout_seconds
+        600,                           // idle_timeout_seconds
+        3600,                          // max_lifetime_seconds
     );
-    let cache_manager = std::sync::Arc::new(CacheManager::new(cache_config)?);
+
+    // Create StoreHaus instance
+    let mut storehaus = StoreHaus::new(config).await?;
 
     // Auto-migrate table
-    dispatcher.auto_migrate::<User>(false).await?;
+    storehaus.auto_migrate::<User>(true).await?;
 
-    // Create store with signals and cache
-    let cache_params = CacheParams::new(cache_manager.clone())
-        .with_ttl(900)                     // Cache TTL (15 min)
-        .with_prefix("users".to_string()); // Cache prefix
-
+    // Create store
     let user_store = GenericStore::<User>::new(
-        dispatcher.pool().clone(),
-        Some(signal_manager.clone()),       // Signals
-        Some(cache_params),                 // Cache
+        storehaus.pool().clone(),
+        None, // no signals
+        None, // no cache
     );
 
-    dispatcher.register_store("users".to_string(), user_store)?;
-    let user_store = dispatcher.get_store::<GenericStore<User>>("users")?;
+    // Register and use store
+    storehaus.register_store("users".to_string(), user_store)?;
+    let user_store = storehaus.get_store::<GenericStore<User>>("users")?;
 
-    // CRUD Operations
-    let user = User { /* ... */ };
-    let created = user_store.create(user).await?;  // Signals emitted, cached
-    let found = user_store.get_by_id(&created.id).await?; // Cache hit!
-    let updated = user_store.update(&created.id, modified_user).await?; // Cache invalidated
-    let deleted = user_store.delete(&created.id).await?;
+    // CRUD operations
+    let user = User {
+        id: Uuid::new_v4(),
+        name: "John Doe".to_string(),
+        email: "john@example.com".to_string(),
+    };
 
-    // Advanced Queries
-    let active_users = user_store.find(
-        QueryBuilder::new()
-            .filter(QueryFilter::eq("is_active", json!(true)))
-            .order_by("name", SortOrder::Asc)
-            .limit(10)
-    ).await?;
-
-    // Batch operations
-    let batch_updates = vec![(id1, user1), (id2, user2)];
-    let updated_users = user_store.update_many(batch_updates).await?;
+    let created = user_store.create(user, None).await?;
+    println!("Created user: {}", created.name);
 
     Ok(())
 }
 ```
 
-## Development
-
-### Available Commands
-
-```bash
-make help                # Show all available commands
-
-# Database
-make docker-up          # Start PostgreSQL
-make docker-down        # Stop containers
-make pgadmin-up         # Start PgAdmin web UI
-make db-connect         # Connect to database via psql
-make db-reset           # Reset database (WARNING: destroys data)
-
-# Examples
-make demo               # Run demo (PostgreSQL only)
-make demo-with-cache    # Run demo with Redis cache
-make demo-full          # Auto-start services and run demo
-
-# Development
-make build              # Build project
-make test               # Run tests
-make check              # Run format, lint, and tests
-make format             # Format code
-make lint               # Run linting
-
-# Convenience
-make dev                # Start development environment
-make setup              # Initial setup for development
-```
-
-### Database Access
-
-- **PostgreSQL**: `postgresql://postgres:password@localhost:5432/storehaus`
-- **Redis**: `redis://localhost:6379`
-- **PgAdmin**: http://localhost:5050 (admin@storehaus.local / admin)
-
-### Project Structure
+## Architecture
 
 ```
 storehaus/
-├── store_object/           # Core traits and generic store
-│   ├── src/
-│   │   ├── traits/        # StoreObject trait definitions
-│   │   ├── generic_store/ # Generic store implementation
-│   │   ├── query_builder/ # SQL query builder
-│   │   └── table_metadata.rs # TableMetadata trait
-│   └── Cargo.toml
-├── table_derive/          # Derive macro for TableMetadata
-│   ├── src/lib.rs
-│   └── Cargo.toml
-├── dispatcher/            # Connection manager and registry
-│   ├── src/lib.rs
-│   ├── examples/demo.rs   # Comprehensive demo
-│   └── Cargo.toml
-├── signal_system/         # Database event notifications
-│   ├── src/lib.rs
-│   └── Cargo.toml
-├── cache_system/          # Redis caching layer
-│   ├── src/lib.rs
-│   └── Cargo.toml
-├── docker-compose.yml     # PostgreSQL + Redis setup
-├── init.sql              # Database initialization
-├── Makefile              # Development commands
-├── CHANGELOG.md          # Version history
-└── README.md
+├── src/                   # Main StoreHaus library code
+├── store_object/          # Core database operations and traits
+├── table_derive/          # Derive macros for SQL generation
+├── signal_system/         # Database event notification system
+├── cache_system/          # Redis-based caching layer
+├── config/                # Configuration management
+├── examples/              # Complete examples and tutorials
+└── docs/                  # Comprehensive documentation
+    ├── README.md          # Documentation index and guide
+    ├── configuration.md   # Complete configuration reference
+    ├── models.md          # Model definitions and usage
+    ├── system-fields.md   # Automatic system fields
+    ├── caching.md         # Redis caching system
+    ├── signals.md         # Event monitoring and callbacks
+    ├── tags.md            # Operation tagging system
+    └── error-handling.md  # Error handling best practices
 ```
+
+## 📚 Documentation
+
+**[Complete Documentation Index →](docs/README.md)**
+
+### Quick Reference
+- **[Configuration Guide](docs/configuration.md)** - Complete setup and configuration reference
+- **[Model Definitions](docs/models.md)** - Create data models with `#[model]` macro
+- **[System Fields](docs/system-fields.md)** - Automatic timestamps, tags, and soft delete
+- **[Caching System](docs/caching.md)** - Redis performance optimization
+- **[Signal System](docs/signals.md)** - Database event monitoring and callbacks
+- **[Tagging System](docs/tags.md)** - Operation categorization and tracking
+- **[Error Handling](docs/error-handling.md)** - Robust application patterns
+
+### 📊 Visual Documentation
+- **[Architecture Diagrams](docs/README.md)** - Comprehensive visual guides embedded in documentation
+  - [System Overview](#architecture) - High-level component architecture with dependency flow
+  - [Data Flow](docs/README.md#data-flow) - Complete CRUD operation lifecycle
+  - [Signal System](docs/signals.md) - Event processing and callback execution
+  - [Cache System](docs/caching.md) - Performance optimization workflows
+  - [Configuration Management](docs/configuration.md) - Configuration loading and validation
+  - [Data Models](docs/models.md) - Model structure and SQL generation
+
+## Configuration
+
+StoreHaus supports multiple configuration methods:
+
+### 1. Programmatic Configuration (Quick Start)
+```rust
+use storehaus::prelude::*;
+
+let config = DatabaseConfig::new(
+    "localhost".to_string(), 5432, "storehaus".to_string(),
+    "postgres".to_string(), "password".to_string(),
+    1, 10, 30, 600, 3600,
+);
+```
+
+### 2. TOML File Configuration (Recommended)
+Create `storehaus.toml`:
+```toml
+[database]
+host = "localhost"
+port = 5432
+database = "storehaus"
+username = "postgres"
+password = "password"
+min_connections = 1
+max_connections = 10
+connection_timeout_seconds = 30
+idle_timeout_seconds = 600
+max_lifetime_seconds = 3600
+
+[cache]
+redis_url = "redis://localhost:6379"
+pool_size = 10
+timeout_ms = 5000
+max_connections = 100
+connection_timeout_ms = 3000
+
+[signal]
+callback_timeout_seconds = 30
+max_callbacks = 100
+remove_failing_callbacks = true
+max_consecutive_failures = 3
+cleanup_interval_seconds = 60
+auto_remove_inactive_callbacks = true
+inactive_callback_threshold_seconds = 300
+```
+
+Load configuration:
+```rust
+let config = AppConfig::load()?; // Loads from storehaus.toml
+let storehaus = StoreHaus::new(config.database).await?;
+```
+
+### 3. Environment Variables
+```bash
+export STOREHAUS_CONFIG=/path/to/production.toml
+```
+
+📖 **For complete configuration options, see [Configuration Guide](docs/configuration.md)**
+
+## Setup
+
+### With Docker Compose
+
+```bash
+# Start PostgreSQL and Redis
+docker-compose up -d
+
+# Build project
+cargo build
+
+# Run examples
+cd storehaus
+cargo run --example complete_integration  # Full system demo
+```
+
+### Make Commands
+
+```bash
+# Setup and development
+make setup              # Initial setup for development
+make dev                # Start development environment
+make docker-up          # Start database services
+make docker-down        # Stop all services
+
+# Building and testing
+make build              # Build project
+make test               # Run tests
+make check              # Format, lint, and test
+
+# Examples (recommended way to explore StoreHaus)
+make example-complete   # Full e-commerce demo (best starting point)
+make examples-all       # Run all examples in sequence
+make examples-help      # Detailed guide to all examples
+```
+
+## 📚 Examples
+
+StoreHaus provides comprehensive, well-organized examples demonstrating all features from basic CRUD operations to complete real-world applications.
+
+### 🎯 Quick Start Guide
+
+**New to StoreHaus?** Follow this learning path:
+
+```bash
+# 1. Start with the overview demo
+cargo run --example demo
+
+# 2. Learn basic CRUD operations
+cargo run --example 01_basic_usage
+
+# 3. Explore advanced model features
+cargo run --example 02_model_definition
+
+# 4. Try real-world applications
+cargo run --example blog_system
+```
+
+### 📖 Example Categories
+
+#### 🚀 **Getting Started**
+Perfect for newcomers to StoreHaus:
+
+- **[01_basic_usage.rs](./examples/01_basic_usage.rs)** - Essential CRUD operations, Model::new() method
+- **[02_model_definition.rs](./examples/02_model_definition.rs)** - Advanced models, field types, soft delete
+
+#### ⚡ **Core Features**
+- **[signals_basic.rs](./examples/signals_basic.rs)** - Event system and callbacks
+- **[caching_basic.rs](./examples/caching_basic.rs)** - Redis caching and performance
+- **[tags_demo.rs](./examples/tags_demo.rs)** - Tag-based categorization
+
+#### 🏪 **Real-World Applications**
+Complete systems demonstrating production patterns:
+
+- **[ecommerce_demo.rs](./examples/ecommerce_demo.rs)** - Full e-commerce platform
+- **[blog_system.rs](./examples/blog_system.rs)** - Content management system
+
+### 🎮 **Quick Commands**
+
+```bash
+# Automated setup (recommended)
+make example-complete       # Full e-commerce demo with setup
+make examples-all           # Run all examples in sequence
+make examples-help          # Detailed guide and descriptions
+
+# Manual execution
+cargo run --example demo
+cargo run --example 01_basic_usage
+cargo run --example blog_system
+```
+
+### 📋 **Requirements**
+
+All examples require:
+- **PostgreSQL** on `localhost:5432` with database `storehaus`
+- **Redis** on `localhost:6379` (for caching examples)
+
+**Quick setup:**
+```bash
+# Using Docker Compose (recommended)
+docker-compose up -d
+
+# Or manually
+docker run -d --name postgres -e POSTGRES_DB=storehaus -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:15
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+```
+
+### 🎓 **Learning Path**
+
+1. **[demo.rs](./examples/demo.rs)** - System overview (5 min)
+2. **[01_basic_usage.rs](./examples/01_basic_usage.rs)** - CRUD fundamentals (10 min)
+3. **[02_model_definition.rs](./examples/02_model_definition.rs)** - Advanced models (15 min)
+4. **[signals_basic.rs](./examples/signals_basic.rs)** - Event handling (10 min)
+5. **[caching_basic.rs](./examples/caching_basic.rs)** - Performance optimization (10 min)
+6. **[blog_system.rs](./examples/blog_system.rs)** - Real-world application (20 min)
+
+📖 **[Complete Examples Documentation →](./examples/README.md)**
+
+**💡 Pro Tips:**
+- Start with `make example-complete` for the full experience
+- Use `make examples-help` to understand what each example demonstrates
+- The Make commands automatically handle database and Redis setup
+- Manual cargo commands require you to set up services first with `make docker-up`
 
 ## Features
 
 ### Current
 - ✅ Generic store implementation
-- ✅ Derive macro for table metadata
+- ✅ Automatic table metadata generation
 - ✅ Database connection management
-- ✅ Store registration and retrieval
-- ✅ Full CRUD operations
-- ✅ Advanced query builder with filters, sorting, pagination
-- ✅ Batch operations (create_many, update_many, delete_many)
-- ✅ Signal system for database event monitoring
-- ✅ Redis-based caching layer with performance optimization
-- ✅ Auto-migration system
-- ✅ Docker setup with PostgreSQL + Redis
-- ✅ Comprehensive demo with all features
+- ✅ Full CRUD functionality
+- ✅ Advanced query builder
+- ✅ Batch operations
+- ✅ Signal system for monitoring
+- ✅ Redis caching
+- ✅ Automatic migrations
+- ✅ Operation tagging system
+- ✅ Automatic system fields management
+- ✅ Soft delete support
 
 ### Planned
-- [ ] Relationship support (foreign keys, joins)
-- [ ] Connection pooling optimization
-- [ ] Multiple database support (MySQL, SQLite)
+- [ ] Model relationships support
+- [ ] Connection pool optimization
 - [ ] Advanced caching strategies
-- [ ] Database transaction management
-- [ ] Custom field types and validators
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `make check`
-5. Submit a pull request
+- [ ] Transaction management
+- [ ] Rate limiting system (token bucket algorithm for preventing abuse)
+  - [ ] Signal system rate limiting (event emission and callback registration)
+  - [ ] Cache operations rate limiting
+  - [ ] Store operations rate limiting
+  - [ ] Per-user and global rate limits
+  - [ ] Configurable rate limit rules
+- [ ] Error boundaries between layers (circuit breaker pattern for cache/signal failures)
+- [ ] Configurable resilience strategies (fail-fast vs fallback)
+- [ ] Retry mechanisms with exponential backoff
 
 ## License
 

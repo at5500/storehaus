@@ -10,4 +10,10 @@ proc-macro = true
 proc-macro2 = "1.0.101"
 quote = "1.0.40"
 syn = "2.0.106"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
 store-object = { path = "../store_object" }
+type-mapping = { path = "../type_mapping" }

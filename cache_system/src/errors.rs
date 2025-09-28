@@ -1,3 +1,8 @@
+//! Error types for cache operations
+//!
+//! This module defines all error types that can occur
+//! during cache operations and Redis interactions.
+
 use thiserror::Error;
 
 /// Cache system errors
@@ -5,6 +10,9 @@ use thiserror::Error;
 pub enum CacheError {
     #[error("Redis connection error: {0}")]
     ConnectionError(#[from] redis::RedisError),
+
+    #[error("Connection pool error: {0}")]
+    Connection(String),
 
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),

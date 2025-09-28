@@ -1,6 +1,10 @@
-pub mod core;
-pub mod store_object;
-pub mod soft_deletable;
-pub mod filterable;
+//! Generic store implementations
+//!
+//! This module provides generic database store functionality.
 
-pub use core::{GenericStore, CacheParams};
+pub mod core;
+pub mod filterable;
+pub mod soft_deletable;
+pub mod store_object;
+
+pub use core::GenericStore;

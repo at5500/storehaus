@@ -1,9 +1,4 @@
-use dispatcher::{DatabaseConfig, Dispatcher};
-use store_object::{generic_store::{GenericStore, CacheParams}, TableMetadata, StoreObject, QueryBuilder, QueryFilter, SortOrder};
-use table_derive::model;
-use signal_system::DatabaseEvent;
-use cache_system::{CacheConfig, CacheManager};
-use uuid::Uuid;
+use storehaus::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -19,14 +14,8 @@ pub struct User {
     #[field(create, update)]
     pub email: String,
 
-    #[field(readonly)]
-    pub created_at: chrono::DateTime<chrono::Utc>,
-
-    #[field(readonly)]
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-
     #[soft_delete]
-    pub is_active: bool,
+    pub __is_active__: bool,
 }
 
 #[tokio::main]
@@ -35,30 +24,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Database setup
     let config = DatabaseConfig::new(
-        "localhost".to_string(),
-        5432,
-        "storehaus".to_string(),
-        "postgres".to_string(),
-        "password".to_string(),
-    ).with_max_connections(5);
+        "localhost".to_string(), // host
+        5432,                    // port
+        "storehaus".to_string(), // database
+        "postgres".to_string(),  // username
+        "password".to_string(),  // password
+        1,                       // min_connections
+        5,                       // max_connections
+        30,                      // connection_timeout_seconds
+        600,                     // idle_timeout_seconds
+        3600,              // max_lifetime_seconds
+    );
 
-    let mut dispatcher = Dispatcher::new(config).await?;
-    dispatcher.health_check().await?;
+    let mut storehaus = StoreHaus::new(config).await?;
+    storehaus.health_check().await?;
     println!("✅ Database connected");
 
     // Signals setup
-    let signal_manager = Arc::new(signal_system::SignalManager::new());
-    signal_manager.add_callback(|event: &DatabaseEvent| {
-        println!("🔔 {} on {}: {:?}",
-            match event.event_type {
-                signal_system::EventType::Create => "Created",
-                signal_system::EventType::Update => "Updated",
-                signal_system::EventType::Delete => "Deleted",
-            },
-            event.table_name,
-            event.record_id.as_ref().unwrap_or(&"batch".to_string())
-        );
-    });
+    let signal_config = SignalConfig::new(
+        30,        // callback_timeout_seconds
+        100,       // max_callbacks
+        true,      // remove_failing_callbacks
+        3,         // max_consecutive_failures
+        60,        // cleanup_interval_seconds
+        true,      // auto_remove_inactive_callbacks
+        300,       // inactive_callback_threshold_seconds
+    );
+    let signal_manager = SignalManager::new(signal_config);
+    signal_manager
+        .add_callback(|event: DatabaseEvent| async move {
+            println!(
+                "🔔 {} on {}: {:?}",
+                match event.event_type {
+                    EventType::Create => "Created",
+                    EventType::Update => "Updated",
+                    EventType::Delete => "Deleted",
+                },
+                event.table_name,
+                event.record_id.as_ref().unwrap_or(&"batch".to_string())
+            );
+            Ok(())
+        })
+        .await?;
     println!("✅ Signals setup");
 
     // Cache setup (optional)
@@ -66,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(manager) => {
             println!("✅ Cache connected");
             Some(manager)
-        },
+        }
         Err(_) => {
             println!("⚠️  Cache unavailable, continuing without it");
             None
@@ -74,22 +81,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Auto-migrate and register store
-    dispatcher.auto_migrate::<User>(false).await?;
+    storehaus.auto_migrate::<User>(false).await?;
 
-    let cache_params = cache_manager.clone().map(|cm| {
-        CacheParams::new(cm)
-            .with_ttl(900)
-            .with_prefix("users".to_string())
-    });
+    let cache_params = cache_manager
+        .clone()
+        .map(|cm| CacheParams::new(cm, 900, "users"));
 
     let user_store = GenericStore::<User>::new(
-        dispatcher.pool().clone(),
+        storehaus.pool().clone(),
         Some(signal_manager.clone()),
         cache_params,
     );
 
-    dispatcher.register_store("users".to_string(), user_store)?;
-    let user_store = dispatcher.get_store::<GenericStore<User>>("users")?;
+    storehaus.register_store("users".to_string(), user_store)?;
+    let user_store = storehaus.get_store::<GenericStore<User>>("users")?;
 
     // Clean up any existing demo data
     let existing_count = user_store.count().await?;
@@ -108,16 +113,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== CRUD Operations ===");
 
     // Create user
-    let user = User {
-        id: Uuid::new_v4(),
-        name: "John Doe".to_string(),
-        email: format!("john-{}@demo.com", Uuid::new_v4()),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        is_active: true,
-    };
+    let user = User::new(
+        Uuid::new_v4(),
+        "John Doe".to_string(),
+        format!("john-{}@demo.com", Uuid::new_v4()),
+         true,
+    );
 
-    let created_user = user_store.create(user).await?;
+    let created_user = user_store.create(user, None).await?;
     println!("Created: {} ({})", created_user.name, created_user.id);
 
     // Test cache performance if available
@@ -139,32 +142,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Update user
     let mut updated = created_user.clone();
     updated.name = "John Smith".to_string();
-    let updated_user = user_store.update(&created_user.id, updated).await?;
+    let updated_user = user_store.update(&created_user.id, updated, None).await?;
     println!("Updated: {}", updated_user.name);
 
     // Create more users for queries
     let test_users = vec![
-        User {
-            id: Uuid::new_v4(),
-            name: "Alice Johnson".to_string(),
-            email: "alice@demo.com".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_active: true,
-        },
-        User {
-            id: Uuid::new_v4(),
-            name: "Bob Wilson".to_string(),
-            email: "bob@demo.com".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_active: false,
-        },
+        User::new(
+            Uuid::new_v4(),
+            "Alice Johnson".to_string(),
+            "alice@demo.com".to_string(),
+            true,
+        ),
+        User::new(
+            Uuid::new_v4(),
+            "Bob Wilson".to_string(),
+            "bob@demo.com".to_string(),
+            false,
+        ),
     ];
 
     let mut test_ids = Vec::new();
     for user in test_users {
-        let created = user_store.create(user).await?;
+        let created = user_store.create(user, None).await?;
         println!("Created test user: {}", created.name);
         test_ids.push(created.id);
     }
@@ -173,15 +172,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Find active users
     let active_query = QueryBuilder::new()
-        .filter(QueryFilter::eq("is_active", json!(true)))
+        .filter(QueryFilter::eq("__is_active__", json!(true)))
         .order_by("name", SortOrder::Asc);
 
     let active_users = user_store.find(active_query).await?;
     println!("Active users: {}", active_users.len());
 
     // Pattern search
-    let name_query = QueryBuilder::new()
-        .filter(QueryFilter::like("name", "%John%"));
+    let name_query = QueryBuilder::new().filter(QueryFilter::like("name", "%John%"));
 
     let john_users = user_store.find(name_query).await?;
     println!("Users with 'John': {}", john_users.len());
@@ -193,17 +191,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Batch Operations ===");
 
     // Batch update
-    let batch_updates = test_ids.iter().enumerate().map(|(i, id)| {
-        let user = User {
-            id: *id,
-            name: format!("Updated User {}", i + 1),
-            email: format!("updated-{}@demo.com", i + 1),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_active: true,
-        };
-        (*id, user)
-    }).take(2).collect();
+    let batch_updates = test_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            let user = User::new(
+                *id,
+                format!("Updated User {}", i + 1),
+                format!("updated-{}@demo.com", i + 1),
+                true,
+            );
+            (*id, user)
+        })
+        .take(2)
+        .collect();
 
     let updated_batch = user_store.update_many(batch_updates).await?;
     println!("Batch updated: {}", updated_batch.len());
@@ -219,7 +220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let deleted = user_store.delete(&created_user.id).await?;
     println!("Main user deleted: {}", deleted);
 
-    dispatcher.health_check().await?;
+    storehaus.health_check().await?;
     println!("\n🎉 Demo completed successfully!");
 
     Ok(())
@@ -228,8 +229,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn setup_cache() -> Result<Arc<CacheManager>, Box<dyn std::error::Error>> {
     let config = CacheConfig::new(
         "redis://localhost:6379".to_string(),
-        1800,
-        "demo".to_string(),
+        10,   // pool_size
+        5000, // timeout_ms
+        100,  // max_connections
+        3000, // connection_timeout_ms
     );
 
     let manager = Arc::new(CacheManager::new(config)?);

@@ -1,0 +1,56 @@
+# StoreHaus Configuration Example
+# Copy this file to storehaus.toml and customize for your environment
+
+[database]
+# PostgreSQL connection settings
+host = "localhost"
+port = 5432
+database = "storehaus"
+username = "postgres"
+password = "password"
+
+# Connection pool settings
+min_connections = 1
+max_connections = 10
+connection_timeout_seconds = 30
+idle_timeout_seconds = 600
+max_lifetime_seconds = 3600
+
+[cache]
+# Redis connection settings
+redis_url = "redis://localhost:6379"
+
+# Redis pool settings
+pool_size = 10
+timeout_ms = 5000
+max_connections = 100
+connection_timeout_ms = 3000
+
+[signal]
+# Signal system configuration
+callback_timeout_seconds = 30
+max_callbacks = 100
+remove_failing_callbacks = true
+max_consecutive_failures = 3
+cleanup_interval_seconds = 60
+auto_remove_inactive_callbacks = true
+inactive_callback_threshold_seconds = 300
+
+# Environment-specific examples:
+#
+# Development:
+# [database]
+# min_connections = 1
+# max_connections = 5
+#
+# Production:
+# [database]
+# min_connections = 10
+# max_connections = 100
+# host = "db.production.com"
+# password = "secure_production_password"
+#
+# [cache]
+# redis_url = "redis://:password@cache.production.com:6379"
+# pool_size = 50
+# max_connections = 500
