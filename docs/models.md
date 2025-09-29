@@ -12,10 +12,12 @@ classDiagram
         +Uuid id
         +String name
         +String email
+        +Option phone
+        +Option age
         +DateTime \_\_created_at\_\_
         +DateTime \_\_updated_at\_\_
         +Vec \_\_tags\_\_
-        +new(id, name, email) User
+        +new(id, name, email, phone, age) User
         +table_name() String
         +create_fields() Vec
     }
@@ -25,11 +27,22 @@ classDiagram
         +String name
         +i32 price
         +Option description
-        +bool \_\_is_active\_\_
         +DateTime \_\_created_at\_\_
         +DateTime \_\_updated_at\_\_
         +Vec \_\_tags\_\_
-        +new(...) Product
+        +bool \_\_is_active\_\_
+        +new(id, name, price, description) Product
+        +table_name() String
+    }
+
+    class Log {
+        +i32 id
+        +String message
+        +String level
+        +DateTime \_\_created_at\_\_
+        +DateTime \_\_updated_at\_\_
+        +Vec \_\_tags\_\_
+        +new(message, level) Log
         +table_name() String
     }
 
@@ -37,6 +50,8 @@ classDiagram
         +UUID id
         +VARCHAR name
         +VARCHAR email
+        +VARCHAR phone
+        +INTEGER age
         +TIMESTAMP \_\_created_at\_\_
         +TIMESTAMP \_\_updated_at\_\_
         +TEXT[] \_\_tags\_\_
@@ -53,13 +68,24 @@ classDiagram
         +TEXT[] \_\_tags\_\_
     }
 
+    class LogsTable {
+        +SERIAL id
+        +VARCHAR message
+        +VARCHAR level
+        +TIMESTAMP \_\_created_at\_\_
+        +TIMESTAMP \_\_updated_at\_\_
+        +TEXT[] \_\_tags\_\_
+    }
+
     User --> UsersTable : generates
     Product --> ProductsTable : generates
+    Log --> LogsTable : generates
 ```
 
 ### Model Annotations
-- **User Model**: `#[model]` - Simple model with automatic system fields
-- **Product Model**: `#[model]` with `#[soft_delete]` - Includes soft delete functionality
+- **User Model**: `#[model]` with `#[soft_delete]` - Custom soft delete field
+- **Product Model**: `#[model]` with `#[table(auto_soft_delete)]` - Automatic soft delete
+- **Log Model**: `#[model]` with `#[table(auto_increment)]` - Auto-incrementing primary key
 
 ### Field Attributes Reference
 - **`#[primary_key]`** - Primary key field
@@ -93,14 +119,20 @@ pub struct User {
 
     #[field(create, update)]
     pub email: String,
+
+    #[field(create, update)]
+    pub phone: Option<String>,
+
+    #[field(create, update)]
+    pub age: Option<i32>,
 }
 ```
 
-### Model with Soft Delete
+### Model with Auto Soft Delete
 
 ```rust
 #[model]
-#[table(name = "products")]
+#[table(name = "products", auto_soft_delete)]
 pub struct Product {
     #[primary_key]
     pub id: Uuid,
@@ -113,11 +145,51 @@ pub struct Product {
 
     #[field(create, update)]
     pub description: Option<String>,
-
-    #[soft_delete]
-    pub \_\_is_active\_\_: bool,
 }
 ```
+
+> **Note**: With `#[table(auto_soft_delete)]`, the `__is_active__` field is automatically added by the macro. You don't need to define it manually.
+
+### Model with Custom Soft Delete Field
+
+```rust
+#[model]
+#[table(name = "users")]
+pub struct User {
+    #[primary_key]
+    pub id: Uuid,
+
+    #[field(create, update)]
+    pub name: String,
+
+    #[field(create, update)]
+    pub email: String,
+
+    #[soft_delete]
+    pub __is_active__: bool,
+}
+```
+
+> **Note**: With `#[soft_delete]`, you manually define the soft delete field and have full control over its name and behavior.
+
+### Model with Auto Increment
+
+```rust
+#[model]
+#[table(name = "logs", auto_increment)]
+pub struct Log {
+    #[primary_key]
+    pub id: i32,
+
+    #[field(create, update)]
+    pub message: String,
+
+    #[field(create, update)]
+    pub level: String,
+}
+```
+
+> **Note**: With `#[table(auto_increment)]`, the primary key field will be automatically incremented by PostgreSQL. The primary key must be an integer type (`i32`, `i64`).
 
 ## Creating Model Instances
 
@@ -128,11 +200,19 @@ The `#[model]` macro automatically generates a `new()` method that initializes s
 ```rust
 // The macro generates this for the User model:
 impl User {
-    pub fn new(id: Uuid, name: String, email: String) -> Self {
+    pub fn new(
+        id: Uuid,
+        name: String,
+        email: String,
+        phone: Option<String>,
+        age: Option<i32>
+    ) -> Self {
         Self {
             id,
             name,
             email,
+            phone,
+            age,
             \_\_created_at\_\_: Utc::now(),
             \_\_updated_at\_\_: Utc::now(),
             \_\_tags\_\_: Vec::new(),
@@ -145,22 +225,51 @@ let user = User::new(
     Uuid::new_v4(),
     "John Doe".to_string(),
     "john@example.com".to_string(),
+    Some("+1-555-0123".to_string()),
+    Some(30),
 );
 ```
 
-### For Soft Delete Models
+### For Auto Soft Delete Models
 
-Models with soft delete fields also get the field initialized:
+Models with `auto_soft_delete` get the `__is_active__` field initialized automatically to `true`:
 
 ```rust
-// For the Product model with soft delete:
+// For the Product model with auto_soft_delete:
 let product = Product::new(
     Uuid::new_v4(),
     "Laptop".to_string(),
     99999, // $999.99 in cents
     Some("Gaming laptop".to_string()),
-    true,  // \_\_is_active\_\_
 );
+// \_\_is_active\_\_ is automatically set to true
+```
+
+### For Custom Soft Delete Models
+
+Models with `#[soft_delete]` field must include it in the constructor:
+
+```rust
+// For the User model with custom soft delete:
+let user = User::new(
+    Uuid::new_v4(),
+    "John Doe".to_string(),
+    "john@example.com".to_string(),
+    true, // __is_active__
+);
+```
+
+### For Auto Increment Models
+
+Models with `auto_increment` don't include the primary key in the constructor:
+
+```rust
+// For the Log model with auto_increment:
+let log = Log::new(
+    "Application started successfully".to_string(),
+    "INFO".to_string(),
+);
+// id is automatically generated by PostgreSQL
 ```
 
 ### Manual Instantiation (Not Recommended)
@@ -172,6 +281,8 @@ let user = User {
     id: Uuid::new_v4(),
     name: "John Doe".to_string(),
     email: "john@example.com".to_string(),
+    phone: Some("+1-555-0123".to_string()),
+    age: Some(30),
     \_\_created_at\_\_: Utc::now(),
     \_\_updated_at\_\_: Utc::now(),
     \_\_tags\_\_: Vec::new(),
@@ -185,14 +296,32 @@ let user = User {
 ### Model Attributes
 
 #### `#[model]`
-Basic model without soft delete support.
-
-#### `#[model]`
+Basic model macro for database table generation and CRUD operations.
 
 ### Table Attributes
 
 #### `#[table(name = "table_name")]`
 Specifies the database table name for the model.
+
+#### `#[table(name = "table_name", auto_soft_delete)]`
+Enables automatic soft delete functionality. Adds an `__is_active__` field automatically.
+
+```rust
+#[table(name = "products", auto_soft_delete)]
+```
+
+#### `#[table(name = "table_name", auto_increment)]`
+Enables auto-increment for the primary key field. Primary key must be an integer type.
+
+```rust
+#[table(name = "logs", auto_increment)]
+```
+
+You can combine multiple table options:
+
+```rust
+#[table(name = "comments", auto_soft_delete, auto_increment)]
+```
 
 ### Field Attributes
 
@@ -229,11 +358,11 @@ pub last_modified_by: Option<Uuid>,
 ```
 
 #### `#[soft_delete]`
-Marks a boolean field as the soft delete flag. Only one field per model can have this attribute.
+Marks a boolean field as the soft delete flag. Gives you full control over the soft delete field name.
 
 ```rust
 #[soft_delete]
-pub is_enabled: bool,
+pub __is_active__: bool,
 ```
 
 #### `#[field(readonly)]`
