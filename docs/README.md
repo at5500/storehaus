@@ -72,7 +72,7 @@ StoreHaus follows a layered architecture:
 │         │ │        │ │           │ │            │
 │• Events │ │• Redis │ │• SQL Gen  │ │• TOML      │
 │• WAL    │ │• TTL   │ │• Macros   │ │• Env Vars  │
-│• Async  │ │• LRU   │ │• Analysis │ │• Validation│
+│• Async  │ │• Expire│ │• Analysis │ │• Validation│
 └─────────┘ └────────┘ └───────────┘ └────────────┘
 ```
 

@@ -109,6 +109,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Duplicate email constraint errors in batch operations
 - Demo cleanup issues causing conflicts on repeated runs
 - Cache invalidation after update and delete operations
+- Misleading documentation about advanced caching strategies
+  - Removed references to unimplemented "caching strategies" from examples
+  - Updated documentation to accurately reflect TTL-only caching implementation
+  - Corrected ASCII diagrams to show "Expire" instead of "LRU"
+  - Fixed component descriptions to match actual cache capabilities
 
 ### Removed
 - Old separate example files (basic_example.rs, signals_usage.rs, cache_usage.rs)

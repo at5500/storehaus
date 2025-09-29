@@ -815,7 +815,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "✅ System fields automation (__created_at__, __updated_at__, __tags__, __is_active__)"
     );
-    println!("✅ Differentiated caching strategies per entity type");
+    println!("✅ Differentiated TTL settings per entity type");
     println!("✅ Comprehensive signal processing (WAL, metrics, notifications)");
     println!("✅ Advanced querying with filters, sorting, pagination");
     println!("✅ Soft delete with recovery capabilities");

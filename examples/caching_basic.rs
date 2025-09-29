@@ -275,7 +275,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  • Timeout: How long to wait for Redis operations");
 
     println!("\n📚 Next Steps:");
-    println!("  • Try caching_advanced.rs for custom TTL and cache strategies");
+    println!("  • Try different TTL settings for various entity types");
     println!("  • Explore query result caching (coming soon)");
     println!("  • Learn about cache monitoring and metrics");
 

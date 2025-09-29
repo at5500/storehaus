@@ -1,10 +1,10 @@
 # Caching System
 
-StoreHaus provides a Redis-based caching layer that automatically caches database queries and invalidates cache entries when data changes. The caching system is designed to be transparent and requires minimal configuration.
+StoreHaus provides a Redis-based caching layer with TTL (Time-To-Live) expiration that automatically caches database queries and invalidates cache entries when data changes. The caching system is designed to be transparent and requires minimal configuration.
 
 ## Overview
 
-The caching system provides intelligent performance optimization with automatic cache management:
+The caching system provides TTL-based performance optimization with automatic cache management:
 
 ```mermaid
 sequenceDiagram
@@ -174,7 +174,7 @@ let custom_cache = CacheParams::new(cache_manager.clone())
 ### Multiple Cache Configurations
 
 ```rust
-// Different caching strategies for different stores
+// Different TTL settings for different stores
 let user_cache = CacheParams::new(cache_manager.clone())
     .with_ttl(1800)                          // 30 minutes
     .with_prefix("users".to_string());

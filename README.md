@@ -31,7 +31,7 @@ StoreHaus follows a layered architecture with clear separation of concerns and n
 │• Events   │ │• Redis    │ │• SQL Gen  │ │• TOML       │
 │• Callbacks│ │• TTL      │ │• Macros   │ │• Env Vars   │
 │• Async    │ │• Keys     │ │• Analysis │ │• Validation │
-│• WAL      │ │• LRU      │ │• Meta     │ │• Defaults   │
+│• WAL      │ │• Expire   │ │• Meta     │ │• Defaults   │
 └──────────┘ └───────────┘ └───────────┘ └─────────────┘
 ```
 
@@ -96,7 +96,7 @@ This design prevents circular dependencies and ensures clean, maintainable archi
 | **storehaus** 🏠 | Application | Main orchestration | • 🎯 Unified Database API<br>• 🔧 Store Management<br>• 🏗️ Business Logic<br>• 🔄 Auto-Migration |
 | **store_object** 📦 | Database | Core operations | • 🗄️ CRUD Operations<br>• 🔍 Advanced Queries<br>• 🏷️ Tagging System<br>• 📊 Batch Operations |
 | **signal_system** 📡 | Supporting | Event management | • 📨 Async Events<br>• 🔄 Type-safe Callbacks<br>• 📊 WAL Integration<br>• ⚡ Real-time Notifications |
-| **cache_system** ⚡ | Supporting | Performance layer | • 🚀 Redis Integration<br>• ⏰ TTL Management<br>• 🔑 Smart Key Generation<br>• 📈 LRU Optimization |
+| **cache_system** ⚡ | Supporting | Performance layer | • 🚀 Redis Integration<br>• ⏰ TTL Management<br>• 🔑 Smart Key Generation<br>• 🔄 Automatic Invalidation |
 | **table_derive** 🛠️ | Supporting | Code generation | • 🔨 Proc Macros<br>• 🗄️ SQL Generation<br>• 🔍 Field Analysis<br>• 📋 Metadata Extraction |
 | **config** ⚙️ | Supporting | Configuration | • 📄 TOML Support<br>• 🌐 Environment Variables<br>• ✅ Validation<br>• 🔧 Defaults Management |
 
