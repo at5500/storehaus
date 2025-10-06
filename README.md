@@ -1,38 +1,48 @@
-#  /// StoreHaus ///
+<div align="center">
+  <img src="assets/storehouse-icon.png" alt="StoreHaus" width="200"/>
 
-A modern Rust database abstraction library for PostgreSQL with automatic code generation, signals, caching, and advanced query capabilities.
+  # /// StoreHaus ///
 
-## 🏗️ Architecture
+  **A modern Rust database abstraction library for PostgreSQL with automatic code generation, signals, caching, and advanced query capabilities**
+
+  <!-- TODO: Uncomment when published -->
+  <!-- [![Crates.io](https://img.shields.io/crates/v/storehaus.svg)](https://crates.io/crates/storehaus) -->
+  <!-- [![Documentation](https://docs.rs/storehaus/badge.svg)](https://docs.rs/storehaus) -->
+  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+  ---
+</div>
+
+## Architecture
 
 StoreHaus follows a layered architecture with clear separation of concerns and no circular dependencies:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                       🏠 STOREHAUS                              │
-│                    (Application Layer)                          │
-│  • 🎯 Unified Database API        • 🔧 Store Management        │
-│  • 🚀 Component Orchestration     • ⚙️  Configuration          │
-│  • 🏗️  Application Logic          • 🔄 Auto-Migration          │
-└─────────────────────────┬───────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                         STOREHAUS                              │
+│                      (Application Layer)                       │
+│  • Unified Database API          • Store Management            │
+│  • Component Orchestration       • Configuration               │
+│  • Application Logic             • Auto-Migration              │
+└─────────────────────────┬──────────────────────────────────────┘
                           │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                   📦 STORE_OBJECT                               │
-│                   (Database Layer)                              │
-│  • 🗄️  CRUD Operations            • 🔍 Advanced Queries        │
-│  • 🔗 Query Builder               • 🏷️  Tagging System         │
-│  • ⚠️  Error Handling             • 🔧 System Fields           │
-│  • 🔌 Integration Layer           • 📊 Batch Operations        │
-└─────┬─────────────┬─────────────┬─────────────┬─────────────────┘
-      │             │             │             │
-┌─────▼────┐ ┌──────▼────┐ ┌──────▼────┐ ┌──────▼──────┐
-│ 📡 SIGNAL │ │ ⚡ CACHE  │ │ 🛠️ TABLE  │ │ ⚙️ CONFIG   │
-│  SYSTEM   │ │  SYSTEM   │ │  DERIVE   │ │  SYSTEM     │
-│           │ │           │ │           │ │             │
-│• Events   │ │• Redis    │ │• SQL Gen  │ │• TOML       │
-│• Callbacks│ │• TTL      │ │• Macros   │ │• Env Vars   │
-│• Async    │ │• Keys     │ │• Analysis │ │• Validation │
-│• WAL      │ │• Expire   │ │• Meta     │ │• Defaults   │
-└──────────┘ └───────────┘ └───────────┘ └─────────────┘
+┌─────────────────────────▼──────────────────────────────────────┐
+│                      STORE_OBJECT                              │
+│                      (Database Layer)                          │
+│  • CRUD Operations               • Advanced Queries            │
+│  • Query Builder                 • Tagging System              │
+│  • Error Handling                • System Fields               │
+│  • Integration Layer             • Batch Operations            │
+└──────┬────────────────┬────────────────┬────────────────┬──────┘
+       │                │                │                │
+┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐
+│   SIGNAL    │  │    CACHE    │  │    TABLE    │  │    CONFIG   │
+│   SYSTEM    │  │    SYSTEM   │  │    DERIVE   │  │    SYSTEM   │
+│             │  │             │  │             │  │             │
+│ • Events    │  │ • Redis     │  │ • SQL Gen   │  │ • TOML      │
+│ • Async     │  │ • TTL       │  │ • Macros    │  │ • Env Vars  │
+│ • WAL       │  │ • Keys      │  │ • Analysis  │  │ • Defaults  │
+└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
 ### Component Dependencies
@@ -79,13 +89,13 @@ graph TD
 ```
 
 ### Dependency Flow
-- **🏠 Application Level**: `storehaus` → orchestrates all components
-- **📦 Database Level**: `store_object` → core database operations
-- **⚙️ Supporting Level**: Independent specialized components
-  - 📡 `signal_system` → event management
-  - ⚡ `cache_system` → performance optimization
-  - 🛠️ `table_derive` → code generation
-  - ⚙️ `config` → configuration management
+- **Application Level**: `storehaus` → orchestrates all components
+- **Database Level**: `store_object` → core database operations
+- **Supporting Level**: Independent specialized components
+  - `signal_system` → event management
+  - `cache_system` → performance optimization
+  - `table_derive` → code generation
+  - `config` → configuration management
 
 This design prevents circular dependencies and ensures clean, maintainable architecture.
 
@@ -93,23 +103,23 @@ This design prevents circular dependencies and ensures clean, maintainable archi
 
 | Crate | Level | Purpose | Key Features |
 |-------|-------|---------|--------------|
-| **storehaus** 🏠 | Application | Main orchestration | • 🎯 Unified Database API<br>• 🔧 Store Management<br>• 🏗️ Business Logic<br>• 🔄 Auto-Migration |
-| **store_object** 📦 | Database | Core operations | • 🗄️ CRUD Operations<br>• 🔍 Advanced Queries<br>• 🏷️ Tagging System<br>• 📊 Batch Operations |
-| **signal_system** 📡 | Supporting | Event management | • 📨 Async Events<br>• 🔄 Type-safe Callbacks<br>• 📊 WAL Integration<br>• ⚡ Real-time Notifications |
-| **cache_system** ⚡ | Supporting | Performance layer | • 🚀 Redis Integration<br>• ⏰ TTL Management<br>• 🔑 Smart Key Generation<br>• 🔄 Automatic Invalidation |
-| **table_derive** 🛠️ | Supporting | Code generation | • 🔨 Proc Macros<br>• 🗄️ SQL Generation<br>• 🔍 Field Analysis<br>• 📋 Metadata Extraction |
-| **config** ⚙️ | Supporting | Configuration | • 📄 TOML Support<br>• 🌐 Environment Variables<br>• ✅ Validation<br>• 🔧 Defaults Management |
+| **storehaus** | Application | Main orchestration | • Unified Database API<br>• Store Management<br>• Business Logic<br>• Auto-Migration |
+| **store_object** | Database | Core operations | • CRUD Operations<br>• Advanced Queries<br>• Tagging System<br>• Batch Operations |
+| **signal_system** | Supporting | Event management | • Async Events<br>• Type-safe Callbacks<br>• WAL Integration<br>• Real-time Notifications |
+| **cache_system** | Supporting | Performance layer | • Redis Integration<br>• TTL Management<br>• Smart Key Generation<br>• Automatic Invalidation |
+| **table_derive** | Supporting | Code generation | • Proc Macros<br>• SQL Generation<br>• Field Analysis<br>• Metadata Extraction |
+| **config** | Supporting | Configuration | • TOML Support<br>• Environment Variables<br>• Validation<br>• Defaults Management |
 
-## 🎯 System Overview
+## Features
 
-StoreHaus provides a comprehensive, high-level interface for database operations, automating routine tasks and offering powerful data management features:
+StoreHaus provides a comprehensive, high-level interface for database operations:
 
-- **🔧 Automatic System Fields** - `__created_at__`, `__updated_at__`, soft delete, `__tags__`
-- **🏷️ Operation Tagging** - categorize and track database operations
-- **📡 Event System** - real-time database event monitoring and callbacks
-- **⚡ Redis Caching** - intelligent performance optimization with TTL
-- **🔄 Auto-Migration** - seamless schema management and evolution
-- **🔍 Advanced Queries** - powerful query builder with filtering, sorting, pagination
+- **Automatic System Fields** - `__created_at__`, `__updated_at__`, soft delete, `__tags__`
+- **Operation Tagging** - categorize and track database operations
+- **Event System** - real-time database event monitoring and callbacks
+- **Redis Caching** - intelligent performance optimization with TTL
+- **Auto-Migration** - seamless schema management and evolution
+- **Advanced Queries** - powerful query builder with filtering, sorting, pagination
 
 ## Quick Start
 
@@ -211,27 +221,18 @@ storehaus/
     └── error-handling.md  # Error handling best practices
 ```
 
-## 📚 Documentation
+## Documentation
 
 **[Complete Documentation Index →](docs/README.md)**
 
 ### Quick Reference
-- **[Configuration Guide](docs/configuration.md)** - Complete setup and configuration reference
-- **[Model Definitions](docs/models.md)** - Create data models with `#[model]` macro
-- **[System Fields](docs/system-fields.md)** - Automatic timestamps, tags, and soft delete
-- **[Caching System](docs/caching.md)** - Redis performance optimization
-- **[Signal System](docs/signals.md)** - Database event monitoring and callbacks
-- **[Tagging System](docs/tags.md)** - Operation categorization and tracking
-- **[Error Handling](docs/error-handling.md)** - Robust application patterns
-
-### 📊 Visual Documentation
-- **[Architecture Diagrams](docs/README.md)** - Comprehensive visual guides embedded in documentation
-  - [System Overview](#architecture) - High-level component architecture with dependency flow
-  - [Data Flow](docs/README.md#data-flow) - Complete CRUD operation lifecycle
-  - [Signal System](docs/signals.md) - Event processing and callback execution
-  - [Cache System](docs/caching.md) - Performance optimization workflows
-  - [Configuration Management](docs/configuration.md) - Configuration loading and validation
-  - [Data Models](docs/models.md) - Model structure and SQL generation
+- [Configuration Guide](docs/configuration.md) - Complete setup and configuration reference
+- [Model Definitions](docs/models.md) - Create data models with `#[model]` macro
+- [System Fields](docs/system-fields.md) - Automatic timestamps, tags, and soft delete
+- [Caching System](docs/caching.md) - Redis performance optimization
+- [Signal System](docs/signals.md) - Database event monitoring and callbacks
+- [Tagging System](docs/tags.md) - Operation categorization and tracking
+- [Error Handling](docs/error-handling.md) - Robust application patterns
 
 ## Configuration
 
@@ -291,7 +292,7 @@ let storehaus = StoreHaus::new(config.database).await?;
 export STOREHAUS_CONFIG=/path/to/production.toml
 ```
 
-📖 **For complete configuration options, see [Configuration Guide](docs/configuration.md)**
+**For complete configuration options, see [Configuration Guide](docs/configuration.md)**
 
 ## Setup
 
@@ -329,11 +330,9 @@ make examples-all       # Run all examples in sequence
 make examples-help      # Detailed guide to all examples
 ```
 
-## 📚 Examples
+## Examples
 
-StoreHaus provides comprehensive, well-organized examples demonstrating all features from basic CRUD operations to complete real-world applications.
-
-### 🎯 Quick Start Guide
+### Quick Start
 
 **New to StoreHaus?** Follow this learning path:
 
@@ -351,26 +350,22 @@ cargo run --example 02_model_definition
 cargo run --example blog_system
 ```
 
-### 📖 Example Categories
+### Example Categories
 
-#### 🚀 **Getting Started**
-Perfect for newcomers to StoreHaus:
+#### Getting Started
+- [01_basic_usage.rs](./examples/01_basic_usage.rs) - Essential CRUD operations, Model::new() method
+- [02_model_definition.rs](./examples/02_model_definition.rs) - Advanced models, field types, soft delete
 
-- **[01_basic_usage.rs](./examples/01_basic_usage.rs)** - Essential CRUD operations, Model::new() method
-- **[02_model_definition.rs](./examples/02_model_definition.rs)** - Advanced models, field types, soft delete
+#### Core Features
+- [signals_basic.rs](./examples/signals_basic.rs) - Event system and callbacks
+- [caching_basic.rs](./examples/caching_basic.rs) - Redis caching and performance
+- [tags_demo.rs](./examples/tags_demo.rs) - Tag-based categorization
 
-#### ⚡ **Core Features**
-- **[signals_basic.rs](./examples/signals_basic.rs)** - Event system and callbacks
-- **[caching_basic.rs](./examples/caching_basic.rs)** - Redis caching and performance
-- **[tags_demo.rs](./examples/tags_demo.rs)** - Tag-based categorization
+#### Real-World Applications
+- [ecommerce_demo.rs](./examples/ecommerce_demo.rs) - Full e-commerce platform
+- [blog_system.rs](./examples/blog_system.rs) - Content management system
 
-#### 🏪 **Real-World Applications**
-Complete systems demonstrating production patterns:
-
-- **[ecommerce_demo.rs](./examples/ecommerce_demo.rs)** - Full e-commerce platform
-- **[blog_system.rs](./examples/blog_system.rs)** - Content management system
-
-### 🎮 **Quick Commands**
+### Quick Commands
 
 ```bash
 # Automated setup (recommended)
@@ -384,11 +379,11 @@ cargo run --example 01_basic_usage
 cargo run --example blog_system
 ```
 
-### 📋 **Requirements**
+### Requirements
 
 All examples require:
-- **PostgreSQL** on `localhost:5432` with database `storehaus`
-- **Redis** on `localhost:6379` (for caching examples)
+- PostgreSQL on `localhost:5432` with database `storehaus`
+- Redis on `localhost:6379` (for caching examples)
 
 **Quick setup:**
 ```bash
@@ -400,24 +395,9 @@ docker run -d --name postgres -e POSTGRES_DB=storehaus -e POSTGRES_PASSWORD=pass
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 ```
 
-### 🎓 **Learning Path**
+**[Complete Examples Documentation →](./examples/README.md)**
 
-1. **[demo.rs](./examples/demo.rs)** - System overview (5 min)
-2. **[01_basic_usage.rs](./examples/01_basic_usage.rs)** - CRUD fundamentals (10 min)
-3. **[02_model_definition.rs](./examples/02_model_definition.rs)** - Advanced models (15 min)
-4. **[signals_basic.rs](./examples/signals_basic.rs)** - Event handling (10 min)
-5. **[caching_basic.rs](./examples/caching_basic.rs)** - Performance optimization (10 min)
-6. **[blog_system.rs](./examples/blog_system.rs)** - Real-world application (20 min)
-
-📖 **[Complete Examples Documentation →](./examples/README.md)**
-
-**💡 Pro Tips:**
-- Start with `make example-complete` for the full experience
-- Use `make examples-help` to understand what each example demonstrates
-- The Make commands automatically handle database and Redis setup
-- Manual cargo commands require you to set up services first with `make docker-up`
-
-## Features
+## Implementation Status
 
 ### Current
 - ✅ Generic store implementation
@@ -451,3 +431,15 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Acknowledgments
+
+- Built with [Tokio](https://tokio.rs/) async runtime
+- Uses [sqlx](https://github.com/launchbadge/sqlx), [redis](https://github.com/redis-rs/redis-rs)
+- Icon: <a href="https://www.flaticon.com/free-icons/storehouse" title="storehouse icons">Storehouse icon created by Freepik - Flaticon</a>
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for the Rust community</sub>
+</div>
