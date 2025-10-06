@@ -36,8 +36,8 @@ StoreHaus follows a layered architecture with clear separation of concerns and n
 └──────┬────────────────┬────────────────┬────────────────┬──────┘
        │                │                │                │
 ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐
-│   SIGNAL    │  │    CACHE    │  │    TABLE    │  │    CONFIG   │
-│   SYSTEM    │  │    SYSTEM   │  │    DERIVE   │  │    SYSTEM   │
+│   SIGNAL    │  │   CACHE     │  │   TABLE     │  │   CONFIG    │
+│   SYSTEM    │  │   SYSTEM    │  │   DERIVE    │  │   SYSTEM    │
 │             │  │             │  │             │  │             │
 │ • Events    │  │ • Redis     │  │ • SQL Gen   │  │ • TOML      │
 │ • Async     │  │ • TTL       │  │ • Macros    │  │ • Env Vars  │
