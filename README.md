@@ -19,16 +19,18 @@ StoreHaus follows a layered architecture with clear separation of concerns and n
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                         STOREHAUS                              │
+│                           STOREHAUS                            │
 │                      (Application Layer)                       │
+│                                                                │
 │  • Unified Database API          • Store Management            │
 │  • Component Orchestration       • Configuration               │
 │  • Application Logic             • Auto-Migration              │
-└─────────────────────────┬──────────────────────────────────────┘
-                          │
-┌─────────────────────────▼──────────────────────────────────────┐
-│                      STORE_OBJECT                              │
-│                      (Database Layer)                          │
+└───────────────────────────────┬────────────────────────────────┘
+                                │
+┌───────────────────────────────▼────────────────────────────────┐
+│                          STORE_OBJECT                          │
+│                        (Database Layer)                        │
+│                                                                │
 │  • CRUD Operations               • Advanced Queries            │
 │  • Query Builder                 • Tagging System              │
 │  • Error Handling                • System Fields               │
