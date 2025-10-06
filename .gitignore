@@ -96,3 +96,6 @@ postgres_data/
 
 # Docker volumes
 *_data/
+
+# Signal system WAL files
+*.wal
