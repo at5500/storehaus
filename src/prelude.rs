@@ -33,6 +33,9 @@ pub use table_derive::{TableMetadata, model};
 
 // Common external dependencies
 pub use anyhow;
-pub use async_trait::async_trait;
-pub use sqlx::{FromRow, PgPool, Row};
+pub use async_trait;
+pub use sqlx;
 pub use tokio;
+
+// Commonly used sqlx types
+pub use sqlx::{FromRow, PgPool, Row, Transaction, Encode, Decode, Type, Postgres};

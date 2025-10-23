@@ -65,3 +65,7 @@ pub use errors::StoreHausError;
 
 // Re-export centralized config
 pub use config::{AppConfig, CacheConfig, DatabaseConfig, SignalConfig};
+
+// Re-export external dependencies used in public API
+pub use sqlx;
+pub use async_trait;

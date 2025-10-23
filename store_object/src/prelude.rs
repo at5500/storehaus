@@ -28,7 +28,10 @@ pub use crate::query_builder::{QueryBuilder, QueryFilter, SortOrder};
 pub use crate::CacheParams;
 
 // Common external dependencies that are frequently used
-pub use async_trait::async_trait;
+pub use async_trait;
 pub use serde::{Deserialize, Serialize};
-pub use sqlx::{FromRow, PgPool, Row};
+pub use sqlx;
 pub use uuid::Uuid;
+
+// Commonly used sqlx types
+pub use sqlx::{FromRow, PgPool, Row, Transaction, Encode, Decode, Type, Postgres};
