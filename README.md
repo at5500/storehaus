@@ -133,7 +133,13 @@ storehaus = { path = "./" }
 tokio = { version = "1.0", features = ["full"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 serde = { version = "1.0", features = ["derive"] }
+
+# Required peer dependencies for StoreHaus macros
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid", "chrono"] }
+async-trait = "0.1"
 ```
+
+> **Note on Peer Dependencies**: StoreHaus uses procedural macros that generate code referencing `sqlx` and `async-trait`. Due to how Rust proc macros work, these dependencies must be directly available in your project's `Cargo.toml` - they cannot be accessed through re-exports. This is a standard pattern in the Rust ecosystem for libraries using derive macros.
 
 ### Basic Example
 

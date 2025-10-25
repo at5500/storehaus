@@ -72,6 +72,7 @@ pub use store_object;
 pub use table_derive;
 pub use cache_system;
 pub use signal_system;
+pub use type_mapping;
 
 // Re-export external dependencies used in public API
 pub use sqlx;
