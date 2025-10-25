@@ -371,7 +371,7 @@ pub fn generate_helper_impl(
                     if field_name != pk_field_name {
                         if let Some(rust_type) = field_types.get(field_name) {
                             let pg_type = Self::rust_type_to_pg_type(rust_type);
-                            let constraint = if type_mapping::is_optional_type(rust_type) {
+                            let constraint = if ::storehaus::type_mapping::is_optional_type(rust_type) {
                                 ""  // Optional types are nullable
                             } else {
                                 " NOT NULL"  // Required types are NOT NULL
@@ -411,12 +411,19 @@ pub fn generate_helper_impl(
                 let mut fields = Vec::new();
                 fields.push((stringify!(#primary_key_field), Self::rust_type_to_pg_type(stringify!(#primary_key_type_tokens))));
 
-                // Add create/update fields - need to determine types at compile time
-                // This is a simplified version - in a real implementation,
-                // you'd need to extract field types from the original struct
+                // Get field types map to properly map Rust types to PostgreSQL types
+                let field_types = Self::get_field_types();
+
+                // Add create/update fields with their actual PostgreSQL types
                 for field_name in Self::create_fields() {
                     if field_name != stringify!(#primary_key_field) {
-                        fields.push((field_name, "VARCHAR"));
+                        if let Some(rust_type) = field_types.get(field_name) {
+                            let pg_type = Self::rust_type_to_pg_type(rust_type);
+                            fields.push((field_name, pg_type));
+                        } else {
+                            // Fallback to VARCHAR if type not found
+                            fields.push((field_name, "VARCHAR"));
+                        }
                     }
                 }
 
@@ -466,7 +473,7 @@ pub fn generate_helper_impl(
             }
 
             fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
-                type_mapping::rust_type_to_pg_type(rust_type)
+                ::storehaus::type_mapping::rust_type_to_pg_type(rust_type)
             }
 
             fn get_field_types() -> std::collections::HashMap<&'static str, &'static str> {

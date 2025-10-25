@@ -5,9 +5,11 @@
 
 /// Map Rust type names to PostgreSQL types for DDL generation
 pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
-    match rust_type.trim() {
-        "Uuid" | "uuid :: Uuid" | "uuid::Uuid" => "UUID",
-        "Option < Uuid >" | "Option<Uuid>" => "UUID",
+    // Normalize type string by removing all whitespace for consistent matching
+    let normalized = rust_type.replace(" ", "");
+    match normalized.as_str() {
+        "Uuid" | "uuid::Uuid" => "UUID",
+        "Option<Uuid>" => "UUID",
         "String" => "VARCHAR",
         "i8" => "SMALLINT",
         "i16" => "SMALLINT",
@@ -19,45 +21,32 @@ pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
         "f32" => "REAL",
         "f64" => "DOUBLE PRECISION",
         "bool" => "BOOLEAN",
-        "chrono :: DateTime < chrono :: Utc >"
-        | "chrono::DateTime<chrono::Utc>"
-        | "chrono :: NaiveDateTime"
-        | "chrono::NaiveDateTime" => "TIMESTAMP WITH TIME ZONE",
-        "chrono :: Date < chrono :: Utc >"
-        | "chrono::Date<chrono::Utc>"
-        | "chrono :: NaiveDate"
-        | "chrono::NaiveDate" => "DATE",
-        "rust_decimal :: Decimal" | "rust_decimal::Decimal" => "NUMERIC(28,10)",
-        "bigdecimal :: BigDecimal" | "bigdecimal::BigDecimal" => "NUMERIC",
-        "serde_json :: Value" | "serde_json::Value" | "Value" => "JSONB",
-        "Option < serde_json :: Value >" | "Option<serde_json::Value>"
-        | "Option < Value >" | "Option<Value>" => "JSONB",
+        "chrono::DateTime<chrono::Utc>" | "chrono::NaiveDateTime" => "TIMESTAMP WITH TIME ZONE",
+        "chrono::Date<chrono::Utc>" | "chrono::NaiveDate" => "DATE",
+        "rust_decimal::Decimal" => "NUMERIC(28,10)",
+        "bigdecimal::BigDecimal" => "NUMERIC",
+        "serde_json::Value" | "Value" => "JSONB",
+        "Option<serde_json::Value>" | "Option<Value>" => "JSONB",
         // Optional timestamp types
-        "Option < chrono :: DateTime < chrono :: Utc > >"
-        | "Option<chrono::DateTime<chrono::Utc>>"
-        | "Option < chrono :: NaiveDateTime >"
-        | "Option<chrono::NaiveDateTime>" => "TIMESTAMP WITH TIME ZONE",
-        "Option < chrono :: Date < chrono :: Utc > >"
-        | "Option<chrono::Date<chrono::Utc>>"
-        | "Option < chrono :: NaiveDate >"
-        | "Option<chrono::NaiveDate>" => "DATE",
+        "Option<chrono::DateTime<chrono::Utc>>" | "Option<chrono::NaiveDateTime>" => "TIMESTAMP WITH TIME ZONE",
+        "Option<chrono::Date<chrono::Utc>>" | "Option<chrono::NaiveDate>" => "DATE",
         // Optional basic types
-        "Option < String >" | "Option<String>" => "VARCHAR",
-        "Option < i8 >" | "Option<i8>" => "SMALLINT",
-        "Option < i16 >" | "Option<i16>" => "SMALLINT",
-        "Option < i32 >" | "Option<i32>" => "INTEGER",
-        "Option < i64 >" | "Option<i64>" => "BIGINT",
-        "Option < u16 >" | "Option<u16>" => "INTEGER",
-        "Option < u32 >" | "Option<u32>" => "BIGINT",
-        "Option < u64 >" | "Option<u64>" => "NUMERIC(20,0)",
-        "Option < f32 >" | "Option<f32>" => "REAL",
-        "Option < f64 >" | "Option<f64>" => "DOUBLE PRECISION",
-        "Option < bool >" | "Option<bool>" => "BOOLEAN",
+        "Option<String>" => "VARCHAR",
+        "Option<i8>" => "SMALLINT",
+        "Option<i16>" => "SMALLINT",
+        "Option<i32>" => "INTEGER",
+        "Option<i64>" => "BIGINT",
+        "Option<u16>" => "INTEGER",
+        "Option<u32>" => "BIGINT",
+        "Option<u64>" => "NUMERIC(20,0)",
+        "Option<f32>" => "REAL",
+        "Option<f64>" => "DOUBLE PRECISION",
+        "Option<bool>" => "BOOLEAN",
         // Optional decimal types
-        "Option < rust_decimal :: Decimal >" | "Option<rust_decimal::Decimal>" => "NUMERIC(28,10)",
-        "Option < bigdecimal :: BigDecimal >" | "Option<bigdecimal::BigDecimal>" => "NUMERIC",
+        "Option<rust_decimal::Decimal>" => "NUMERIC(28,10)",
+        "Option<bigdecimal::BigDecimal>" => "NUMERIC",
         // Vec types
-        "Vec < String >" | "Vec<String>" => "TEXT[]",
+        "Vec<String>" => "TEXT[]",
         _ => "VARCHAR", // default fallback
     }
 }
