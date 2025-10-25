@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comprehensive type mapping example (`all_types_demo.rs`) demonstrating all SQLx-compatible types
+- Public re-exports of internal crates (`store_object`, `table_derive`, `cache_system`, `signal_system`, `type_mapping`) for macro compatibility
+- Documentation about unsigned integer limitations and PostgreSQL type system constraints
+
+### Fixed
+- **CRITICAL**: Fixed incorrect PostgreSQL type mapping for `Option<DateTime<Utc>>` and other complex types
+  - Previously all fields (except primary key and system fields) were hardcoded as `VARCHAR`
+  - Now correctly maps to appropriate PostgreSQL types:
+    - `Option<DateTime<Utc>>` → `TIMESTAMP WITH TIME ZONE` (was `VARCHAR`)
+    - `Option<i32>` → `INTEGER` (was `VARCHAR`)
+    - All other Optional types now correctly mapped
+- Type string normalization to handle `quote!()` macro whitespace output
+  - Handles types like `Option < DateTime < Utc > >` correctly
+- `generate_table_fields()` now uses actual field types from `get_field_types()` instead of fallback
+
+## [Previous - Unreleased]
+
+### Added
 - Redis-based caching system with performance optimization
 - Signal system for database event monitoring and notifications
 - Advanced query builder with filters, sorting, and pagination

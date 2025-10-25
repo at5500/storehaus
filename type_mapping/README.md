@@ -46,19 +46,36 @@ Provides size hints for PostgreSQL types for optimization purposes.
 ## Supported Types
 
 ### Basic Types
-| Rust Type | PostgreSQL Type | PostgresValue Variant |
-|-----------|-----------------|----------------------|
-| `String` | `VARCHAR` | `Text` |
-| `i8` | `SMALLINT` | `SmallInt` |
-| `i16` | `SMALLINT` | `SmallInt` |
-| `i32` | `INTEGER` | `Integer` |
-| `i64` | `BIGINT` | `BigInt` |
-| `u16` | `INTEGER` | `Integer` |
-| `u32` | `BIGINT` | `Integer` |
-| `u64` | `NUMERIC(20,0)` | `Decimal` |
-| `f32` | `REAL` | `Float` |
-| `f64` | `DOUBLE PRECISION` | `Float` |
-| `bool` | `BOOLEAN` | `Boolean` |
+| Rust Type | PostgreSQL Type | PostgresValue Variant | Notes |
+|-----------|-----------------|----------------------|-------|
+| `String` | `VARCHAR` | `Text` | ✅ Fully supported |
+| `i8` | `SMALLINT` | `SmallInt` | ✅ Fully supported |
+| `i16` | `SMALLINT` | `SmallInt` | ✅ Fully supported |
+| `i32` | `INTEGER` | `Integer` | ✅ Fully supported |
+| `i64` | `BIGINT` | `BigInt` | ✅ Fully supported |
+| `f32` | `REAL` | `Float` | ✅ Fully supported |
+| `f64` | `DOUBLE PRECISION` | `Float` | ✅ Fully supported |
+| `bool` | `BOOLEAN` | `Boolean` | ✅ Fully supported |
+
+### Unsigned Integer Types (Limited Support)
+
+⚠️ **Important**: PostgreSQL does not natively support unsigned integer types. SQLx also does not provide `Encode/Decode` implementations for unsigned integers.
+
+| Rust Type | PostgreSQL Type | SQLx Support | Recommendation |
+|-----------|-----------------|--------------|----------------|
+| `u16` | `INTEGER` | ❌ No | Use `i32` instead |
+| `u32` | `BIGINT` | ❌ No | Use `i64` instead |
+| `u64` | `NUMERIC(20,0)` | ❌ No | Use `i64` with validation, or custom wrapper |
+
+**Why not supported?**
+- PostgreSQL only has signed integer types (`SMALLINT`, `INTEGER`, `BIGINT`)
+- SQLx previously had `u32` support but removed it because it was misleading (it decoded PostgreSQL OIDs)
+- For applications needing unsigned integers, use signed types with application-level validation
+
+**Workarounds:**
+1. Use signed types if values fit within the range
+2. Create a custom wrapper type with `NUMERIC` storage (see [sqlx-pg-uint](https://github.com/bitfl0wer/sqlx-pg-uint))
+3. Store as `i64` with validation at application level
 
 ### UUID Types
 | Rust Type | PostgreSQL Type | PostgresValue Variant |
@@ -98,19 +115,21 @@ Provides size hints for PostgreSQL types for optimization purposes.
 | `Option<bigdecimal::BigDecimal>` | `NUMERIC` | `Decimal` |
 
 ### Optional Basic Types
-| Rust Type | PostgreSQL Type | PostgresValue Variant |
-|-----------|-----------------|----------------------|
-| `Option<String>` | `VARCHAR` | `Text` |
-| `Option<i8>` | `SMALLINT` | `SmallInt` |
-| `Option<i16>` | `SMALLINT` | `SmallInt` |
-| `Option<i32>` | `INTEGER` | `Integer` |
-| `Option<i64>` | `BIGINT` | `BigInt` |
-| `Option<u16>` | `INTEGER` | `Integer` |
-| `Option<u32>` | `BIGINT` | `Integer` |
-| `Option<u64>` | `NUMERIC(20,0)` | `Decimal` |
-| `Option<f32>` | `REAL` | `Float` |
-| `Option<f64>` | `DOUBLE PRECISION` | `Float` |
-| `Option<bool>` | `BOOLEAN` | `Boolean` |
+
+✅ All `Option<T>` variants are fully supported for signed types and become nullable columns in PostgreSQL.
+
+| Rust Type | PostgreSQL Type | PostgresValue Variant | Nullable |
+|-----------|-----------------|----------------------|----------|
+| `Option<String>` | `VARCHAR` | `Text` | ✅ |
+| `Option<i8>` | `SMALLINT` | `SmallInt` | ✅ |
+| `Option<i16>` | `SMALLINT` | `SmallInt` | ✅ |
+| `Option<i32>` | `INTEGER` | `Integer` | ✅ |
+| `Option<i64>` | `BIGINT` | `BigInt` | ✅ |
+| `Option<f32>` | `REAL` | `Float` | ✅ |
+| `Option<f64>` | `DOUBLE PRECISION` | `Float` | ✅ |
+| `Option<bool>` | `BOOLEAN` | `Boolean` | ✅ |
+
+⚠️ Unsigned optional types (`Option<u16>`, `Option<u32>`, `Option<u64>`) have the same limitations as their non-optional counterparts.
 
 ## Query Parameter Binding Features
 
@@ -130,9 +149,39 @@ QueryBuilder::new().filter_by_any_tag(vec!["tag1".to_string(), "tag2".to_string(
 // Generates: WHERE __tags__ && ARRAY[$1, $2]
 ```
 
+## Recent Fixes (v0.1.1)
+
+### Critical Type Mapping Bug Fix
+
+**Issue**: Previously, `generate_table_fields()` hardcoded all non-primary-key fields as `VARCHAR`, ignoring actual field types.
+
+**Impact**:
+- `Option<DateTime<Utc>>` mapped to `VARCHAR` instead of `TIMESTAMP WITH TIME ZONE`
+- `Option<i32>` mapped to `VARCHAR` instead of `INTEGER`
+- All optional types incorrectly mapped to `VARCHAR`
+
+**Fix**:
+- `generate_table_fields()` now uses `get_field_types()` to get actual Rust types
+- Added type string normalization to handle whitespace from `quote!()` macro
+- Now correctly maps all types including complex `Option<T>` variants
+
+**Example**:
+```rust
+#[field(create, update)]
+pub end_time: Option<DateTime<Utc>>,
+
+// Before fix: VARCHAR (WRONG!)
+// After fix:  TIMESTAMP WITH TIME ZONE (CORRECT!)
+```
+
 ## Architecture Benefits
 
 - **Consistency**: Single source of truth for type mappings
 - **Maintainability**: Changes to type mappings only need to be made in one place
 - **Extensibility**: Easy to add support for new types
 - **Documentation**: Clear documentation of supported type conversions
+- **Type Safety**: Compile-time type checking ensures correct PostgreSQL types
+
+## Examples
+
+See `examples/all_types_demo.rs` for a comprehensive demonstration of all supported types.
