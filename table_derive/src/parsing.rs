@@ -5,7 +5,6 @@
 
 use quote::quote;
 use std::collections::HashMap;
-use syn::spanned::Spanned;
 use syn::{
     parse::Parse, parse::ParseStream, Attribute, Data, Error, Fields, Ident, Meta, Result, Token,
 };
@@ -239,25 +238,38 @@ pub struct TableInfo {
     pub name: String,
     pub has_auto_increment: bool,
     pub auto_soft_delete: bool,
+    #[allow(dead_code)]
+    pub composite_indexes: Vec<Vec<String>>,        // #[index(field1, field2)]
+    #[allow(dead_code)]
+    pub composite_unique_indexes: Vec<Vec<String>>, // #[unique(field1, field2)]
 }
 
 #[derive(Debug)]
 pub struct FieldInfo {
-    pub primary_key_field: Ident,
-    pub primary_key_type: String,
+    pub primary_key_field: Option<Ident>,
+    pub primary_key_type: Option<String>,
     pub create_fields: Vec<String>,
     pub update_fields: Vec<String>,
     pub soft_delete_field: Option<String>,
     pub field_types: HashMap<String, String>, // field_name -> rust_type
+    #[allow(dead_code)]
+    pub indexed_fields: Vec<String>,          // fields marked with #[index]
+    #[allow(dead_code)]
+    pub unique_fields: Vec<String>,           // fields marked with #[unique]
 }
 
 pub fn parse_table_attributes(attrs: &[Attribute]) -> Result<TableInfo> {
+    let mut table_name = None;
+    let mut has_auto_increment = false;
+    let mut auto_soft_delete = false;
+    let mut composite_indexes = Vec::new();
+    let mut composite_unique_indexes = Vec::new();
+
+    // First pass: find #[table(...)] attribute
     for attr in attrs {
         if attr.path().is_ident("table") {
             if let Meta::List(meta_list) = &attr.meta {
                 let mut name = None;
-                let mut has_auto_increment = false;
-                let mut auto_soft_delete = false;
 
                 // Parse nested tokens manually since syn 2.0 changed the API
                 let mut tokens = meta_list.tokens.clone().into_iter().peekable();
@@ -298,26 +310,71 @@ pub fn parse_table_attributes(attrs: &[Attribute]) -> Result<TableInfo> {
                     }
                 }
 
-                let table_name = name.ok_or_else(|| {
-                    Error::new_spanned(&attr.meta, "table attribute requires a name parameter: #[table(name = \"table_name\")]")
-                })?;
-
-                // Validate table name at compile time with proper error handling
-                validate_table_name_syn(&table_name, attr.meta.span())?;
-
-                return Ok(TableInfo {
-                    name: table_name,
-                    has_auto_increment,
-                    auto_soft_delete,
-                });
+                table_name = name;
             }
         }
     }
 
-    Err(Error::new(
-        proc_macro2::Span::call_site(),
-        "table attribute is required: add #[table(name = \"table_name\")] to your struct",
-    ))
+    let table_name = table_name.ok_or_else(|| {
+        Error::new(
+            proc_macro2::Span::call_site(),
+            "table attribute is required: add #[table(name = \"table_name\")] to your struct",
+        )
+    })?;
+
+    // Validate table name at compile time with proper error handling
+    validate_table_name_syn(&table_name, proc_macro2::Span::call_site())?;
+
+    // Second pass: find #[index(...)] and #[unique(...)] attributes
+    for attr in attrs {
+        if attr.path().is_ident("index") {
+            if let Meta::List(meta_list) = &attr.meta {
+                let fields = parse_field_list(&meta_list.tokens)?;
+                composite_indexes.push(fields);
+            }
+        } else if attr.path().is_ident("unique") {
+            if let Meta::List(meta_list) = &attr.meta {
+                let fields = parse_field_list(&meta_list.tokens)?;
+                composite_unique_indexes.push(fields);
+            }
+        }
+    }
+
+    Ok(TableInfo {
+        name: table_name,
+        has_auto_increment,
+        auto_soft_delete,
+        composite_indexes,
+        composite_unique_indexes,
+    })
+}
+
+/// Parse a list of field names from tokens like (field1, field2, field3)
+fn parse_field_list(tokens: &proc_macro2::TokenStream) -> Result<Vec<String>> {
+    let mut fields = Vec::new();
+    let mut tokens_iter = tokens.clone().into_iter().peekable();
+
+    while let Some(token) = tokens_iter.next() {
+        if let proc_macro2::TokenTree::Ident(ident) = token {
+            fields.push(ident.to_string());
+        }
+
+        // Skip commas
+        if let Some(proc_macro2::TokenTree::Punct(punct)) = tokens_iter.peek() {
+            if punct.as_char() == ',' {
+                tokens_iter.next();
+            }
+        }
+    }
+
+    if fields.is_empty() {
+        return Err(Error::new(
+            proc_macro2::Span::call_site(),
+            "index or unique attribute requires at least one field name",
+        ));
+    }
+
+    Ok(fields)
 }
 
 pub fn parse_field_attributes(data: &Data, table_info: &TableInfo) -> Result<FieldInfo> {
@@ -329,6 +386,8 @@ pub fn parse_field_attributes(data: &Data, table_info: &TableInfo) -> Result<Fie
             let mut update_fields = Vec::new();
             let mut soft_delete_field = None;
             let mut field_types = HashMap::new();
+            let mut indexed_fields = Vec::new();
+            let mut unique_fields = Vec::new();
 
             for field in &fields_named.named {
                 let field_name = field
@@ -345,19 +404,31 @@ pub fn parse_field_attributes(data: &Data, table_info: &TableInfo) -> Result<Fie
 
                 let ty = &field.ty;
                 let type_string = quote!(#ty).to_string();
+                // Normalize type string by removing all whitespace for consistent matching
+                let normalized_type_string = type_string.replace(" ", "");
 
                 // Store field type
-                field_types.insert(field_name_str.clone(), type_string.clone());
+                field_types.insert(field_name_str.clone(), normalized_type_string.clone());
 
                 // Check for primary_key attribute
                 if has_attribute(&field.attrs, "primary_key") {
                     primary_key_field = Some(field_name.clone());
-                    primary_key_type = Some(type_string);
+                    primary_key_type = Some(normalized_type_string.clone());
                 }
 
                 // Check for soft_delete attribute
                 if has_attribute(&field.attrs, "soft_delete") {
                     soft_delete_field = Some(field_name_str.clone());
+                }
+
+                // Check for index attributes
+                if has_attribute(&field.attrs, "index") {
+                    indexed_fields.push(field_name_str.clone());
+                }
+
+                // Check for unique attributes
+                if has_attribute(&field.attrs, "unique") {
+                    unique_fields.push(field_name_str.clone());
                 }
 
                 // Check for field attributes
@@ -373,19 +444,10 @@ pub fn parse_field_attributes(data: &Data, table_info: &TableInfo) -> Result<Fie
                 }
             }
 
-            let primary_key_field = primary_key_field.ok_or_else(|| {
-                Error::new(
-                    proc_macro2::Span::call_site(),
-                    "struct must have a field marked with #[primary_key] attribute",
-                )
-            })?;
-
-            let primary_key_type = primary_key_type.ok_or_else(|| {
-                Error::new(
-                    proc_macro2::Span::call_site(),
-                    "primary_key field type could not be determined",
-                )
-            })?;
+            // Primary key is now optional - if not provided, table will have no primary key
+            // This is useful for settings tables and other key-value stores
+            let primary_key_field = primary_key_field;
+            let primary_key_type = primary_key_type;
 
             // Add system fields to field_types and update_fields
             field_types.insert(
@@ -414,6 +476,8 @@ pub fn parse_field_attributes(data: &Data, table_info: &TableInfo) -> Result<Fie
                 update_fields,
                 soft_delete_field,
                 field_types,
+                indexed_fields,
+                unique_fields,
             });
         }
     }

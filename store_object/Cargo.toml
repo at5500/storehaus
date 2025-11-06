@@ -11,5 +11,6 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0.69"
+tracing = "0.1"
 signal-system = { path = "../signal_system" }
 cache-system = { path = "../cache_system" }

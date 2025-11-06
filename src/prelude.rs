@@ -22,6 +22,9 @@ pub use config::{AppConfig, CacheConfig, DatabaseConfig, SignalConfig};
 // Re-export commonly used store-object types for convenience
 pub use store_object::prelude::*;
 
+// Re-export store_object module for macro-generated code
+pub use store_object;
+
 // Re-export signal system for event handling
 pub use signal_system::prelude::*;
 

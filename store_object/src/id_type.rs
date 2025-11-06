@@ -138,3 +138,39 @@ impl HasUniversalId for &str {
         UniversalId::String(self.to_string())
     }
 }
+
+/// Type for tables without primary key
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct NoId;
+
+impl HasUniversalId for NoId {
+    fn universal_id(&self) -> UniversalId {
+        UniversalId::String(String::new())
+    }
+}
+
+// sqlx implementations for NoId
+impl sqlx::Type<sqlx::Postgres> for NoId {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <String as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl<'q> sqlx::Encode<'q, sqlx::Postgres> for NoId {
+    fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        <&str as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&"", buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for NoId {
+    fn decode(_value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        Ok(NoId)
+    }
+}
+
+// Implementation for () - for backward compatibility
+impl HasUniversalId for () {
+    fn universal_id(&self) -> UniversalId {
+        UniversalId::String(String::new())
+    }
+}

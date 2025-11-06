@@ -15,7 +15,7 @@ pub mod validation;
 pub use cache_system::CacheParams;
 pub use errors::StorehausError;
 pub use generic_store::GenericStore;
-pub use id_type::{HasUniversalId, UniversalId};
+pub use id_type::{HasUniversalId, NoId, UniversalId};
 pub use query_builder::{QueryBuilder, QueryFilter, QueryOperator, SortOrder};
 pub use tagged_data::TaggedData;
 pub use traits::table_metadata::DatabaseExecutor;

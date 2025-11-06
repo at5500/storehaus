@@ -8,11 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Optional Primary Keys Support**: Models can now be created without primary keys
+  - Use case: settings tables, key-value stores, junction tables
+  - `type Id = NoId` for tables without primary key
+  - New `NoId` type with full SQLx and `HasUniversalId` implementations
+  - Backward compatibility with `()` type for legacy code
+  - Documentation updated in `docs/models.md` with examples and usage notes
+- **Database Index Support**: Comprehensive index creation with simple attributes
+  - `#[index]` attribute for single-field indexes to improve query performance
+  - `#[unique]` attribute for single-field unique constraints to enforce data integrity
+  - `#[index(field1, field2)]` struct-level attribute for composite indexes
+  - `#[unique(field1, field2)]` struct-level attribute for composite unique constraints
+  - Automatic SQL generation for all index types (B-tree indexes)
+  - Support for system fields in composite indexes (e.g., `#[index(user_id, __created_at__)]`)
+  - Complete documentation with examples and best practices in `docs/models.md`
+- **Default Trait Implementation**: Automatic `Default` implementation for all models
+  - System fields (`__created_at__`, `__updated_at__`) initialized with current time
+  - All user fields initialized with `Default::default()`
+  - Simplifies model creation and testing
 - Comprehensive type mapping example (`all_types_demo.rs`) demonstrating all SQLx-compatible types
 - Public re-exports of internal crates (`store_object`, `table_derive`, `cache_system`, `signal_system`, `type_mapping`) for macro compatibility
+- Public re-export of `store_object` module in prelude for macro-generated code
 - Documentation about unsigned integer limitations and PostgreSQL type system constraints
+- `tracing` dependency for SQL debugging and diagnostics
 
 ### Fixed
+- **CRITICAL**: Fixed SQL parameter binding in `update_where()` operations
+  - UPDATE parameters now correctly numbered starting from $1
+  - WHERE clause parameters renumbered to come after UPDATE parameters
+  - Prevents "bind parameter mismatch" errors in complex updates
+  - Added debug logging for UPDATE operations with parameter counts
+- **CRITICAL**: Fixed `delete_where()` and soft delete operations for tables without primary keys
+  - Both hard and soft delete now handle tables without PK correctly
+  - Returns empty Vec<Id> for tables without primary key instead of failing
+  - Prevents SQL syntax errors when RETURNING clause expects non-existent PK
 - **CRITICAL**: Fixed incorrect PostgreSQL type mapping for `Option<DateTime<Utc>>` and other complex types
   - Previously all fields (except primary key and system fields) were hardcoded as `VARCHAR`
   - Now correctly maps to appropriate PostgreSQL types:
@@ -21,7 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - All other Optional types now correctly mapped
 - Type string normalization to handle `quote!()` macro whitespace output
   - Handles types like `Option < DateTime < Utc > >` correctly
+  - Normalized type strings by removing all whitespace for consistent matching
 - `generate_table_fields()` now uses actual field types from `get_field_types()` instead of fallback
+
+### Changed
+- Primary key is now optional in models (backward compatible change)
+- `update_where()` SQL generation improved with correct parameter ordering
+- `delete_where()` operations now check for primary key existence before RETURNING clause
 
 ## [Previous - Unreleased]
 

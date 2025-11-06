@@ -1620,6 +1620,7 @@ dependencies = [
  "signal-system",
  "sqlx",
  "thiserror 1.0.69",
+ "tracing",
  "uuid",
 ]
 

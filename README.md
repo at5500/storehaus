@@ -117,6 +117,7 @@ This design prevents circular dependencies and ensures clean, maintainable archi
 StoreHaus provides a comprehensive, high-level interface for database operations:
 
 - **Automatic System Fields** - `__created_at__`, `__updated_at__`, soft delete, `__tags__`
+- **Database Indexes** - single and composite indexes with `#[index]` and `#[unique]` attributes
 - **Operation Tagging** - categorize and track database operations
 - **Event System** - real-time database event monitoring and callbacks
 - **Redis Caching** - intelligent performance optimization with TTL
@@ -420,6 +421,7 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 - ✅ Operation tagging system
 - ✅ Automatic system fields management
 - ✅ Soft delete support
+- ✅ Database index support (single and composite indexes)
 
 ### Planned
 - [ ] Model relationships support

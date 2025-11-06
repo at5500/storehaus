@@ -373,6 +373,174 @@ Field is readonly and managed by the system (deprecated - use system fields inst
 pub computed_value: String,
 ```
 
+### Database Indexes
+
+StoreHaus supports creating database indexes to improve query performance. You can create both single-field and composite indexes using simple attributes.
+
+#### `#[index]` - Single Field Index
+
+Marks a field for indexing. Creates a B-tree index on the field to speed up queries.
+
+```rust
+#[field(create, update)]
+#[index]
+pub name: String,
+```
+
+Generated SQL:
+```sql
+CREATE INDEX IF NOT EXISTS idx_users_name ON "users" ("name")
+```
+
+#### `#[unique]` - Single Field Unique Index
+
+Marks a field as unique. Creates a unique constraint index that prevents duplicate values.
+
+```rust
+#[field(create, update)]
+#[unique]
+pub email: String,
+```
+
+Generated SQL:
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON "users" ("email")
+```
+
+#### Composite Indexes
+
+For queries that filter on multiple fields together, you can create composite indexes at the struct level.
+
+##### `#[index(field1, field2, ...)]` - Composite Index
+
+Creates a multi-column index for queries that filter on multiple fields:
+
+```rust
+#[model]
+#[table(name = "records")]
+#[index(user_id, created_at)]
+pub struct Record {
+    #[primary_key]
+    pub id: Uuid,
+
+    #[field(create)]
+    pub user_id: Uuid,
+
+    #[field(create, update)]
+    pub data: String,
+}
+```
+
+Generated SQL:
+```sql
+CREATE INDEX IF NOT EXISTS idx_records_user_id_created_at
+ON "records" ("user_id", "__created_at__")
+```
+
+##### `#[unique(field1, field2, ...)]` - Composite Unique Index
+
+Creates a multi-column unique constraint, ensuring the combination of values is unique:
+
+```rust
+#[model]
+#[table(name = "user_preferences")]
+#[unique(user_id, preference_key)]
+pub struct UserPreference {
+    #[primary_key]
+    pub id: Uuid,
+
+    #[field(create)]
+    pub user_id: Uuid,
+
+    #[field(create)]
+    pub preference_key: String,
+
+    #[field(create, update)]
+    pub preference_value: String,
+}
+```
+
+Generated SQL:
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_preferences_user_id_preference_key_unique
+ON "user_preferences" ("user_id", "preference_key")
+```
+
+#### Complete Index Example
+
+Here's a model demonstrating all index types:
+
+```rust
+use storehaus::prelude::*;
+use uuid::Uuid;
+
+#[model]
+#[table(name = "products")]
+#[index(category_id, price)]           // Composite index for filtered queries
+#[unique(sku)]                          // Alternative to field-level #[unique]
+pub struct Product {
+    #[primary_key]
+    pub id: Uuid,
+
+    #[field(create, update)]
+    #[unique]                            // Unique constraint on email
+    pub email: String,
+
+    #[field(create, update)]
+    #[index]                             // Regular index on name for searches
+    pub name: String,
+
+    #[field(create, update)]
+    pub category_id: Uuid,
+
+    #[field(create, update)]
+    pub price: i32,
+
+    #[field(create)]
+    pub sku: String,                     // Unique via struct-level attribute
+}
+```
+
+This generates the following indexes:
+```sql
+-- Single field unique index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_email_unique ON "products" ("email");
+
+-- Single field index
+CREATE INDEX IF NOT EXISTS idx_products_name ON "products" ("name");
+
+-- Composite index
+CREATE INDEX IF NOT EXISTS idx_products_category_id_price ON "products" ("category_id", "price");
+
+-- Composite unique index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_sku_unique ON "products" ("sku");
+```
+
+#### Index Best Practices
+
+**When to use indexes:**
+- Fields frequently used in WHERE clauses
+- Fields used for sorting (ORDER BY)
+- Fields used in JOIN operations
+- Foreign key fields
+- Email addresses and other unique identifiers
+
+**Performance considerations:**
+- Indexes speed up reads but slow down writes (INSERT/UPDATE/DELETE)
+- Don't over-index - each index uses disk space and maintenance overhead
+- Composite indexes are most effective when query filters match the index column order
+- The order matters: `#[index(user_id, created_at)]` optimizes queries filtering by `user_id` first
+
+**Unique indexes for data integrity:**
+- Use `#[unique]` to enforce business rules at the database level
+- Prevents race conditions that application-level validation can't catch
+- Essential for emails, usernames, SKUs, and other identifiers that must be unique
+
+**System field indexes:**
+- System fields like `__created_at__` and `__updated_at__` can be included in composite indexes
+- Useful for queries like "all records for user X created after date Y"
+- Example: `#[index(user_id, __created_at__)]`
+
 ## Supported Field Types
 
 ### Basic Types
@@ -526,11 +694,15 @@ pub struct User {
 
 Common compilation errors and solutions:
 
-#### Missing primary key
-```
-error: Model must have exactly one #[primary_key] field
-```
-Solution: Add `#[primary_key]` to exactly one field.
+#### Missing primary key (Optional)
+Primary keys are now optional in StoreHaus. Models can be created without a `#[primary_key]` field for use cases like settings tables or key-value stores.
+
+When a model has no primary key:
+- `type Id = ()`
+- `extract_id()` returns `()`
+- `primary_key_field()` returns `""`
+- `update_sql()`, `delete_by_id_sql()`, and `get_by_id_sql()` return empty strings
+- You must build custom queries for updates and lookups
 
 #### Invalid field attribute
 ```

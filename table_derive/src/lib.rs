@@ -62,7 +62,7 @@ use sql_generation::{
 /// ```
 #[proc_macro_derive(
     TableMetadata,
-    attributes(table, primary_key, field, soft_delete, auto_increment, readonly)
+    attributes(table, primary_key, field, soft_delete, auto_increment, readonly, index, unique)
 )]
 pub fn derive_table_metadata(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -410,6 +410,8 @@ where
         let (where_clause, _, _, params) = query.build();
 
         // Get update field names and build SET clause
+        // IMPORTANT: Parameters must be bound in the order they appear in SQL
+        // So we number UPDATE parameters first ($1, $2, ...), then WHERE parameters
         let update_fields = T::update_fields();
         let set_clause = update_fields
             .iter()
@@ -418,24 +420,44 @@ where
                 let mut assignment = String::with_capacity(field.len() + 8);
                 assignment.push_str(field);
                 assignment.push_str(" = $");
-                assignment.push_str(&(params.len() + i + 1).to_string());
+                assignment.push_str(&(i + 1).to_string()); // UPDATE params are $1, $2, ...
                 assignment
             })
             .collect::<Vec<_>>()
             .join(", ");
 
+        // Adjust WHERE clause parameter numbers to come after UPDATE parameters
+        let adjusted_where_clause = if !params.is_empty() {
+            let mut where_str = where_clause.clone();
+            // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
+            for i in (1..=params.len()).rev() {
+                let old_param = format!("${}", i);
+                let new_param = format!("${}", update_fields.len() + i);
+                where_str = where_str.replace(&old_param, &new_param);
+            }
+            where_str
+        } else {
+            where_clause.clone()
+        };
+
         // Build UPDATE statement with RETURNING clause to get updated records
         let sql = format!(
-            "UPDATE {}{} SET {}, __updated_at__ = NOW() RETURNING *",
+            "UPDATE {} SET {}, __updated_at__ = NOW() {} RETURNING *",
             T::table_name(),
-            where_clause,
-            set_clause
+            set_clause,
+            adjusted_where_clause
         );
 
-        // Use the new owned method to get a query with bound UPDATE parameters
+        tracing::debug!("[UPDATE_WHERE] Table: {}", T::table_name());
+        tracing::debug!("[UPDATE_WHERE] SQL: {}", sql);
+        tracing::debug!("[UPDATE_WHERE] WHERE params count: {}", params.len());
+        tracing::debug!("[UPDATE_WHERE] UPDATE fields count: {}", update_fields.len());
+
+        // Use the model's bind method to create a query with UPDATE parameters bound
+        // This automatically binds $1, $2, ... for the UPDATE fields
         let mut sqlx_query = data.bind_update_params_owned(&sql);
 
-        // Bind WHERE clause parameters after
+        // Then bind WHERE clause parameters (which are now numbered after UPDATE params)
         for param in params {
             sqlx_query = self.bind_param(sqlx_query, param);
         }
@@ -502,6 +524,9 @@ where
         // Build the WHERE clause from the query
         let (where_clause, _, _, params) = query.build();
 
+        // Check if table has primary key
+        let has_primary_key = !T::primary_key_field().is_empty();
+
         // For soft delete models, we need to UPDATE rather than DELETE
         if T::supports_soft_delete() {
             let soft_delete_field =
@@ -512,26 +537,51 @@ where
                     ),
                 })?;
 
-            // Build UPDATE statement to set soft delete field = false, returning IDs
-            let sql = format!(
-                "UPDATE {}{} SET {} = false, __updated_at__ = NOW() RETURNING {}",
-                T::table_name(),
-                where_clause,
-                soft_delete_field,
-                T::primary_key_field()
-            );
+            // Build UPDATE statement to set soft delete field = false
+            let sql = if has_primary_key {
+                format!(
+                    "UPDATE {} SET {} = false, __updated_at__ = NOW() {} RETURNING {}",
+                    T::table_name(),
+                    soft_delete_field,
+                    where_clause,
+                    T::primary_key_field()
+                )
+            } else {
+                // For tables without PK, just execute the update without returning IDs
+                format!(
+                    "UPDATE {} SET {} = false, __updated_at__ = NOW() {}",
+                    T::table_name(),
+                    soft_delete_field,
+                    where_clause
+                )
+            };
 
-            let mut sqlx_query = sqlx::query_as::<_, (T::Id,)>(&sql);
-            for param in params {
-                sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
-            }
+            let deleted_ids = if has_primary_key {
+                let mut sqlx_query = sqlx::query_as::<_, (T::Id,)>(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
+                }
 
-            let soft_deleted_ids: Vec<(T::Id,)> = sqlx_query
-                .fetch_all(&self.db_pool)
-                .await
-                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
+                let soft_deleted_ids: Vec<(T::Id,)> = sqlx_query
+                    .fetch_all(&self.db_pool)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
 
-            let deleted_ids: Vec<T::Id> = soft_deleted_ids.into_iter().map(|(id,)| id).collect();
+                soft_deleted_ids.into_iter().map(|(id,)| id).collect()
+            } else {
+                // For tables without PK, execute and return empty vec
+                let mut sqlx_query = sqlx::query(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_raw(sqlx_query, param);
+                }
+
+                sqlx_query
+                    .execute(&self.db_pool)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
+
+                Vec::new()
+            };
 
             // Emit delete signal if signal manager is present and records were deleted
             if self.signal_manager.is_some() && !deleted_ids.is_empty() {
@@ -580,25 +630,49 @@ where
 
             Ok(deleted_ids)
         } else {
-            // Hard delete - build DELETE statement returning IDs
-            let sql = format!(
-                "DELETE FROM {}{} RETURNING {}",
-                T::table_name(),
-                where_clause,
-                T::primary_key_field()
-            );
+            // Hard delete - build DELETE statement
+            let sql = if has_primary_key {
+                format!(
+                    "DELETE FROM {} {} RETURNING {}",
+                    T::table_name(),
+                    where_clause,
+                    T::primary_key_field()
+                )
+            } else {
+                // For tables without PK, just execute the delete without returning IDs
+                format!(
+                    "DELETE FROM {} {}",
+                    T::table_name(),
+                    where_clause
+                )
+            };
 
-            let mut sqlx_query = sqlx::query_as::<_, (T::Id,)>(&sql);
-            for param in params {
-                sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
-            }
+            let deleted_ids = if has_primary_key {
+                let mut sqlx_query = sqlx::query_as::<_, (T::Id,)>(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
+                }
 
-            let hard_deleted_ids: Vec<(T::Id,)> = sqlx_query
-                .fetch_all(&self.db_pool)
-                .await
-                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
+                let hard_deleted_ids: Vec<(T::Id,)> = sqlx_query
+                    .fetch_all(&self.db_pool)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
 
-            let deleted_ids: Vec<T::Id> = hard_deleted_ids.into_iter().map(|(id,)| id).collect();
+                hard_deleted_ids.into_iter().map(|(id,)| id).collect()
+            } else {
+                // For tables without PK, execute and return empty vec
+                let mut sqlx_query = sqlx::query(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_raw(sqlx_query, param);
+                }
+
+                sqlx_query
+                    .execute(&self.db_pool)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
+
+                Vec::new()
+            };
 
             // Emit delete signal if signal manager is present and records were deleted
             if self.signal_manager.is_some() && !deleted_ids.is_empty() {

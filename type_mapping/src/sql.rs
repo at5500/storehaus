@@ -27,8 +27,8 @@ pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
         "bigdecimal::BigDecimal" => "NUMERIC",
         "serde_json::Value" | "Value" => "JSONB",
         "Option<serde_json::Value>" | "Option<Value>" => "JSONB",
-        // Optional timestamp types
-        "Option<chrono::DateTime<chrono::Utc>>" | "Option<chrono::NaiveDateTime>" => "TIMESTAMP WITH TIME ZONE",
+        // Optional timestamp types (both full and short paths)
+        "Option<chrono::DateTime<chrono::Utc>>" | "Option<DateTime<Utc>>" | "Option<chrono::NaiveDateTime>" => "TIMESTAMP WITH TIME ZONE",
         "Option<chrono::Date<chrono::Utc>>" | "Option<chrono::NaiveDate>" => "DATE",
         // Optional basic types
         "Option<String>" => "VARCHAR",

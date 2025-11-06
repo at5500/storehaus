@@ -65,12 +65,14 @@ pub fn generate_table_metadata_impl(
     let update_fields = &field_info.update_fields;
     let soft_delete_field = &field_info.soft_delete_field;
 
-    // Parse the primary key type into a TokenStream
-    let primary_key_type_tokens: TokenStream = primary_key_type.parse().unwrap_or_else(|e| {
-        panic!(
-            "Failed to parse primary key type '{}': {}",
-            primary_key_type, e
-        )
+    // Parse the primary key type into a TokenStream if present
+    let primary_key_type_tokens: Option<TokenStream> = primary_key_type.as_ref().map(|pk_type| {
+        pk_type.parse().unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse primary key type '{}': {}",
+                pk_type, e
+            )
+        })
     });
 
     // Generate CREATE SQL
@@ -88,19 +90,24 @@ pub fn generate_table_metadata_impl(
         create_placeholders.join(", ")
     );
 
-    // Generate UPDATE SQL
-    let update_assignments: Vec<_> = update_fields
-        .iter()
-        .enumerate()
-        .map(|(i, field)| format!("{} = ${}", safe_sql_identifier(field), i + 1))
-        .collect();
-    let update_sql = format!(
-        "UPDATE {} SET {}, __updated_at__ = NOW() WHERE {} = ${} RETURNING *",
-        safe_sql_identifier(table_name),
-        update_assignments.join(", "),
-        safe_sql_identifier(&primary_key_field.to_string()),
-        update_fields.len() + 1
-    );
+    // Generate UPDATE SQL - only if primary key exists
+    let update_sql = if let Some(pk_field) = primary_key_field {
+        let update_assignments: Vec<_> = update_fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| format!("{} = ${}", safe_sql_identifier(field), i + 1))
+            .collect();
+        format!(
+            "UPDATE {} SET {}, __updated_at__ = NOW() WHERE {} = ${} RETURNING *",
+            safe_sql_identifier(table_name),
+            update_assignments.join(", "),
+            safe_sql_identifier(&pk_field.to_string()),
+            update_fields.len() + 1
+        )
+    } else {
+        // For tables without primary key, UPDATE is not supported via this method
+        String::new()
+    };
 
     // Generate LIST_ALL SQL
     let list_all_sql = if let Some(soft_delete_field_name) = soft_delete_field {
@@ -116,19 +123,29 @@ pub fn generate_table_metadata_impl(
         )
     };
 
-    // Generate DELETE_BY_ID SQL
-    let delete_by_id_sql = format!(
-        "DELETE FROM {} WHERE {} = $1",
-        safe_sql_identifier(table_name),
-        safe_sql_identifier(&primary_key_field.to_string())
-    );
+    // Generate DELETE_BY_ID SQL - only if primary key exists
+    let delete_by_id_sql = if let Some(pk_field) = primary_key_field {
+        format!(
+            "DELETE FROM {} WHERE {} = $1",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(&pk_field.to_string())
+        )
+    } else {
+        // For tables without primary key, DELETE requires manual query building
+        String::new()
+    };
 
-    // Generate GET_BY_ID SQL
-    let get_by_id_sql = format!(
-        "SELECT * FROM {} WHERE {} = $1",
-        safe_sql_identifier(table_name),
-        safe_sql_identifier(&primary_key_field.to_string())
-    );
+    // Generate GET_BY_ID SQL - only if primary key exists
+    let get_by_id_sql = if let Some(pk_field) = primary_key_field {
+        format!(
+            "SELECT * FROM {} WHERE {} = $1",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(&pk_field.to_string())
+        )
+    } else {
+        // For tables without primary key, lookups require manual query building
+        String::new()
+    };
 
     // Generate COUNT_ALL SQL
     let count_all_sql = format!(
@@ -167,9 +184,41 @@ pub fn generate_table_metadata_impl(
         })
         .collect();
 
+    // Generate type Id and methods that depend on primary key
+    let (id_type, extract_id_impl, primary_key_field_impl) = if let Some(pk_type_tokens) = primary_key_type_tokens {
+        let pk_field = primary_key_field.as_ref().unwrap();
+        (
+            quote! { type Id = #pk_type_tokens; },
+            quote! {
+                fn extract_id(&self) -> Self::Id {
+                    self.#pk_field
+                }
+            },
+            quote! {
+                fn primary_key_field() -> &'static str {
+                    stringify!(#pk_field)
+                }
+            }
+        )
+    } else {
+        (
+            quote! { type Id = store_object::NoId; },
+            quote! {
+                fn extract_id(&self) -> Self::Id {
+                    store_object::NoId
+                }
+            },
+            quote! {
+                fn primary_key_field() -> &'static str {
+                    ""
+                }
+            }
+        )
+    };
+
     quote! {
         impl store_object::TableMetadata for #name {
-            type Id = #primary_key_type_tokens;
+            #id_type
 
             fn table_name() -> &'static str {
                 #table_name
@@ -215,9 +264,7 @@ pub fn generate_table_metadata_impl(
                 #soft_delete_field_option
             }
 
-            fn extract_id(&self) -> Self::Id {
-                self.#primary_key_field
-            }
+            #extract_id_impl
 
             fn create_fields() -> Vec<&'static str> {
                 #create_fields_vec
@@ -227,9 +274,7 @@ pub fn generate_table_metadata_impl(
                 #update_fields_vec
             }
 
-            fn primary_key_field() -> &'static str {
-                stringify!(#primary_key_field)
-            }
+            #primary_key_field_impl
 
             fn create_table_sql() -> String {
                 Self::generate_create_table_sql()
@@ -281,12 +326,14 @@ pub fn generate_helper_impl(
     let primary_key_type = &field_info.primary_key_type;
     let soft_delete_field = &field_info.soft_delete_field;
 
-    // Parse the primary key type into a TokenStream
-    let primary_key_type_tokens: TokenStream = primary_key_type.parse().unwrap_or_else(|e| {
-        panic!(
-            "Failed to parse primary key type '{}': {}",
-            primary_key_type, e
-        )
+    // Parse the primary key type into a TokenStream if present
+    let primary_key_type_tokens: Option<TokenStream> = primary_key_type.as_ref().map(|pk_type| {
+        pk_type.parse().unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse primary key type '{}': {}",
+                pk_type, e
+            )
+        })
     });
 
     // Generate proper soft_delete_field token for use in conditionals
@@ -330,40 +377,44 @@ pub fn generate_helper_impl(
                 // Create field_types map at compile time
                 let field_types = Self::get_field_types();
 
-                // Add primary key with proper type and default
+                // Add primary key with proper type and default (only if primary key exists)
                 let pk_field_name = stringify!(#primary_key_field);
-                let pk_rust_type = stringify!(#primary_key_type_tokens);
 
-                // Determine if this is an auto-increment field
-                let is_pk_auto_increment = {
-                    let has_auto_inc = #has_auto_increment;
-                    has_auto_inc
-                };
+                // Only add primary key if it's not empty (tables without primary key will have empty string)
+                if !pk_field_name.is_empty() {
+                    let pk_rust_type = stringify!(#primary_key_type_tokens);
 
-                let (pk_pg_type, pk_default) = if is_pk_auto_increment {
-                    // Use SERIAL types for auto-increment fields
-                    match pk_rust_type.trim() {
-                        "i16" => ("SMALLSERIAL".to_string(), "".to_string()),
-                        "i32" => ("SERIAL".to_string(), "".to_string()),
-                        "i64" => ("BIGSERIAL".to_string(), "".to_string()),
-                        _ => ("SERIAL".to_string(), "".to_string()) // Default to SERIAL
-                    }
-                } else {
-                    // Regular field types
-                    let pg_type = Self::rust_type_to_pg_type(pk_rust_type);
-                    let default = match pk_rust_type.trim() {
-                        "Uuid" | "uuid :: Uuid" | "uuid::Uuid" => "DEFAULT gen_random_uuid()",
-                        _ => ""
+                    // Determine if this is an auto-increment field
+                    let is_pk_auto_increment = {
+                        let has_auto_inc = #has_auto_increment;
+                        has_auto_inc
                     };
-                    (pg_type.to_string(), default.to_string())
-                };
 
-                field_definitions.push(format!(
-                    "{} {} PRIMARY KEY {}",
-                    pk_field_name,
-                    pk_pg_type,
-                    pk_default
-                ));
+                    let (pk_pg_type, pk_default) = if is_pk_auto_increment {
+                        // Use SERIAL types for auto-increment fields
+                        match pk_rust_type.trim() {
+                            "i16" => ("SMALLSERIAL".to_string(), "".to_string()),
+                            "i32" => ("SERIAL".to_string(), "".to_string()),
+                            "i64" => ("BIGSERIAL".to_string(), "".to_string()),
+                            _ => ("SERIAL".to_string(), "".to_string()) // Default to SERIAL
+                        }
+                    } else {
+                        // Regular field types
+                        let pg_type = Self::rust_type_to_pg_type(pk_rust_type);
+                        let default = match pk_rust_type.trim() {
+                            "Uuid" | "uuid :: Uuid" | "uuid::Uuid" => "DEFAULT gen_random_uuid()",
+                            _ => ""
+                        };
+                        (pg_type.to_string(), default.to_string())
+                    };
+
+                    field_definitions.push(format!(
+                        "{} {} PRIMARY KEY {}",
+                        pk_field_name,
+                        pk_pg_type,
+                        pk_default
+                    ));
+                }
 
                 // Add create fields with their actual types
                 let field_types = Self::get_field_types();
@@ -513,6 +564,67 @@ pub fn generate_database_executor_impl(name: &Ident, field_info: &FieldInfo) -> 
         })
         .collect();
 
+    // Generate update methods only if primary key exists
+    let update_methods = if field_info.primary_key_field.is_some() {
+        quote! {
+            async fn execute_update(&self, pool: &sqlx::PgPool) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::update_sql();
+                let id = self.extract_id();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#update_bind_calls)*
+                    .bind(&id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
+            }
+
+            async fn execute_update_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                let sql = Self::update_sql();
+                let id = self.extract_id();
+                sqlx::query_as::<_, Self>(sql)
+                    #(#update_bind_calls)*
+                    .bind(&id)
+                    .fetch_one(tx.as_mut())
+                    .await
+                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
+            }
+        }
+    } else {
+        quote! {
+            async fn execute_update(&self, pool: &sqlx::PgPool) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                Err(store_object::StorehausError::validation(
+                    Self::table_name(),
+                    "primary_key",
+                    "Table has no primary key. Use update_where with QueryBuilder instead."
+                ))
+            }
+
+            async fn execute_update_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
+            where
+                Self: Sized + Send + Sync,
+                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
+            {
+                Err(store_object::StorehausError::validation(
+                    Self::table_name(),
+                    "primary_key",
+                    "Table has no primary key. Use update_where with QueryBuilder instead."
+                ))
+            }
+        }
+    };
+
     quote! {
         #[async_trait::async_trait]
         impl store_object::DatabaseExecutor for #name {
@@ -529,20 +641,7 @@ pub fn generate_database_executor_impl(name: &Ident, field_info: &FieldInfo) -> 
                     .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "create", e))
             }
 
-            async fn execute_update(&self, pool: &sqlx::PgPool) -> Result<Self, store_object::StorehausError>
-            where
-                Self: Sized + Send + Sync,
-                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
-            {
-                let sql = Self::update_sql();
-                let id = self.extract_id();
-                sqlx::query_as::<_, Self>(sql)
-                    #(#update_bind_calls)*
-                    .bind(&id)
-                    .fetch_one(pool)
-                    .await
-                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
-            }
+            #update_methods
 
             async fn execute_create_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
             where
@@ -555,21 +654,6 @@ pub fn generate_database_executor_impl(name: &Ident, field_info: &FieldInfo) -> 
                     .fetch_one(tx.as_mut())
                     .await
                     .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "create", e))
-            }
-
-            async fn execute_update_tx(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Self, store_object::StorehausError>
-            where
-                Self: Sized + Send + Sync,
-                Self: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
-            {
-                let sql = Self::update_sql();
-                let id = self.extract_id();
-                sqlx::query_as::<_, Self>(sql)
-                    #(#update_bind_calls)*
-                    .bind(&id)
-                    .fetch_one(tx.as_mut())
-                    .await
-                    .map_err(|e| store_object::StorehausError::database_operation(Self::table_name(), "update", e))
             }
         }
     }

@@ -117,14 +117,22 @@ pub fn model_attribute(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Generate system field default values
     let mut system_field_assignments = vec![
-        quote! { __created_at__: Default::default() },
-        quote! { __updated_at__: Default::default() },
         quote! { __tags__: None },
     ];
 
     if table_info.auto_soft_delete {
         system_field_assignments.push(quote! { __is_active__: true });
     }
+
+    // Generate Default field assignments - all fields get defaults
+    let user_field_defaults: Vec<_> = fields
+        .named
+        .iter()
+        .map(|field| {
+            let name = &field.ident;
+            quote! { #name: Default::default() }
+        })
+        .collect();
 
     let expanded = quote! {
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow, TableMetadata)]
@@ -134,11 +142,24 @@ pub fn model_attribute(_attr: TokenStream, item: TokenStream) -> TokenStream {
             #(#system_fields),*
         }
 
+        impl #generics Default for #name #generics {
+            fn default() -> Self {
+                Self {
+                    #(#user_field_defaults),*,
+                    __created_at__: chrono::Utc::now(),
+                    __updated_at__: chrono::Utc::now(),
+                    #(#system_field_assignments),*
+                }
+            }
+        }
+
         impl #generics #name #generics {
             /// Create a new instance with automatic system field initialization
             pub fn new(#(#new_params),*) -> Self {
                 Self {
                     #(#user_field_assignments),*,
+                    __created_at__: chrono::Utc::now(),
+                    __updated_at__: chrono::Utc::now(),
                     #(#system_field_assignments),*
                 }
             }
