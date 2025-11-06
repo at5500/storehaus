@@ -22,7 +22,7 @@ pub use crate::validation::{ValidatedFieldName, ValidatedTableName, ValidationEr
 pub use crate::tagged_data::TaggedData;
 
 // Query building
-pub use crate::query_builder::{QueryBuilder, QueryFilter, SortOrder};
+pub use crate::query_builder::{GroupBy, JoinClause, JoinType, QueryBuilder, QueryFilter, SelectField, SortOrder};
 
 // Cache params (re-exported from cache_system)
 pub use crate::CacheParams;

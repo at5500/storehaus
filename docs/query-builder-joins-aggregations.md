@@ -17,7 +17,9 @@ QueryBuilder supports all major JOIN types:
 ### JOIN Types
 
 ```rust
-use store_object::query_builder::{JoinType, JoinClause, QueryBuilder};
+use storehaus::prelude::*;
+// Or alternatively:
+// use store_object::query_builder::{JoinType, JoinClause, QueryBuilder};
 
 // INNER JOIN
 let query = QueryBuilder::new()
@@ -114,7 +116,8 @@ let query = QueryBuilder::new()
 ### Selecting Specific Fields
 
 ```rust
-use store_object::query_builder::SelectField;
+// All query builder types are available via prelude
+use storehaus::prelude::*;
 
 let query = QueryBuilder::new()
     .select_fields(vec![
@@ -139,7 +142,6 @@ let query = QueryBuilder::new()
 ### Aggregation Functions
 
 ```rust
-use store_object::query_builder::SelectField;
 
 // COUNT(*)
 let query = QueryBuilder::new()
@@ -175,8 +177,7 @@ let query = QueryBuilder::new()
 ### Grouping by Single Field
 
 ```rust
-use store_object::query_builder::GroupBy;
-
+// GroupBy is also available via prelude
 let query = QueryBuilder::new()
     .select_fields(vec![
         SelectField::field("status"),
@@ -214,7 +215,6 @@ HAVING is used to filter aggregated results after GROUP BY.
 ### Simple HAVING Conditions
 
 ```rust
-use store_object::query_builder::{GroupBy, QueryFilter};
 use serde_json::json;
 
 let query = QueryBuilder::new()
@@ -261,10 +261,7 @@ let query = QueryBuilder::new()
 ### Complex Query with JOIN, Aggregation, and Filtering
 
 ```rust
-use store_object::query_builder::{
-    QueryBuilder, SelectField, JoinClause, JoinType,
-    GroupBy, QueryFilter, SortOrder
-};
+use storehaus::prelude::*;
 use serde_json::json;
 
 let query = QueryBuilder::new()

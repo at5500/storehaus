@@ -161,6 +161,13 @@ pub struct User {
     pub email: String,
 }
 
+// The prelude exports all commonly used types including:
+// - Core traits: StoreObject, TableMetadata, Filterable
+// - Query building: QueryBuilder, QueryFilter, SortOrder
+// - Advanced queries: JoinClause, JoinType, SelectField, GroupBy
+// - Database types: DatabaseExecutor, PgPool, Transaction
+// - External dependencies: async_trait, serde, sqlx, uuid
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Database configuration with connection pool settings
