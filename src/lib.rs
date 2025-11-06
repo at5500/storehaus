@@ -54,6 +54,36 @@
 //! }
 //! ```
 
+/// Conditional debug logging macros
+/// These macros only compile in code when the `debug-logging` feature is enabled
+#[cfg(feature = "debug-logging")]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        tracing::debug!($($arg)*)
+    };
+}
+
+#[cfg(not(feature = "debug-logging"))]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {};
+}
+
+#[cfg(feature = "debug-logging")]
+#[macro_export]
+macro_rules! trace_log {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+
+#[cfg(not(feature = "debug-logging"))]
+#[macro_export]
+macro_rules! trace_log {
+    ($($arg:tt)*) => {};
+}
+
 pub mod core;
 pub mod errors;
 pub mod migration;

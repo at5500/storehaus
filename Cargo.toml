@@ -8,6 +8,10 @@ repository = "https://github.com/yourusername/storehaus"
 keywords = ["database", "postgresql", "orm", "async", "cache"]
 categories = ["database", "web-programming"]
 
+[features]
+default = []
+debug-logging = []
+
 [workspace]
 resolver = "3"
 members = [

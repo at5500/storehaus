@@ -3,7 +3,7 @@
 //! This module provides automatic table creation and migration utilities
 //! for StoreObject types managed by StoreHaus.
 
-use crate::core::StoreHaus;
+use crate::{core::StoreHaus, debug_log};
 use crate::errors::StoreHausError;
 use store_object::traits::{StoreObject, TableMetadata};
 
@@ -19,13 +19,13 @@ impl StoreHaus {
         // Drop table if recreate is requested
         if recreate {
             let drop_sql = T::drop_table_sql();
-            println!("Dropping table with SQL: {}", drop_sql);
+            debug_log!("Dropping table with SQL: {}", drop_sql);
             sqlx::query(&drop_sql).execute(self.pool()).await?;
         }
 
         // Create the table
         let create_table_sql = T::create_table_sql();
-        println!("Creating table with SQL: {}", create_table_sql);
+        debug_log!("Creating table with SQL: {}", create_table_sql);
         sqlx::query(&create_table_sql).execute(self.pool()).await?;
 
         // Create __updated_at__ trigger function if it doesn't exist
@@ -65,7 +65,7 @@ impl StoreHaus {
         // Create indexes
         let indexes = T::create_indexes_sql();
         for index_sql in indexes {
-            println!("Creating index with SQL: {}", index_sql);
+            debug_log!("Creating index with SQL: {}", index_sql);
             sqlx::query(&index_sql).execute(self.pool()).await?;
         }
 
