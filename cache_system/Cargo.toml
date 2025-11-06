@@ -3,6 +3,10 @@ name = "cache-system"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+debug-logging = []
+
 [dependencies]
 redis = { version = "0.32.6", features = ["tokio-comp", "json"] }
 serde = { version = "1.0.228", features = ["derive"] }

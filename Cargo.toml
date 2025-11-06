@@ -10,7 +10,14 @@ categories = ["database", "web-programming"]
 
 [features]
 default = []
-debug-logging = []
+debug-logging = [
+    "signal-system/debug-logging",
+    "cache-system/debug-logging",
+    "type-mapping/debug-logging",
+    "table-derive/debug-logging",
+    "store-object/debug-logging",
+    "config/debug-logging",
+]
 
 [workspace]
 resolver = "3"

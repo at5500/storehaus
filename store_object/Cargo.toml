@@ -3,6 +3,10 @@ name = "store-object"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+debug-logging = []
+
 [dependencies]
 async-trait = "0.1.89"
 serde = { version = "1.0.226", features = ["derive"] }
