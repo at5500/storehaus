@@ -122,7 +122,7 @@ StoreHaus provides a comprehensive, high-level interface for database operations
 - **Event System** - real-time database event monitoring and callbacks
 - **Redis Caching** - intelligent performance optimization with TTL
 - **Auto-Migration** - seamless schema management and evolution
-- **Advanced Queries** - powerful query builder with filtering, sorting, pagination
+- **Advanced Queries** - powerful query builder with JOINs, aggregations, filtering, sorting, pagination
 
 ## Quick Start
 

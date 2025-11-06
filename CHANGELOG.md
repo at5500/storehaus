@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **QueryBuilder JOIN and Aggregation Support**: Comprehensive SQL query capabilities
+  - **JOIN Operations**: Support for all major JOIN types
+    - `INNER JOIN`, `LEFT JOIN`, `RIGHT JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`
+    - JOIN conditions with `ON` clause or `USING` clause
+    - Table aliases support for complex queries
+    - Multiple JOINs in a single query
+  - **SELECT Field Specification**: Control which fields to return
+    - Specific field selection with `SelectField::field()`
+    - Field aliases with `SelectField::field_as()`
+    - Multiple field selection with `.select_fields()`
+  - **Aggregation Functions**: Statistical operations on data
+    - `COUNT(*)`, `COUNT(field)`, `COUNT(DISTINCT field)`
+    - `SUM(field)`, `AVG(field)`, `MIN(field)`, `MAX(field)`
+    - Aliases for aggregation results
+  - **GROUP BY Clause**: Group results for aggregation
+    - Single field grouping with `GroupBy::single()`
+    - Multiple field grouping with `GroupBy::new()`
+  - **HAVING Clause**: Filter aggregated results
+    - Single and multiple HAVING conditions
+    - Full QueryFilter support for complex conditions
+  - **New Method**: `build_full()` returns all query parts including SELECT, JOIN, GROUP BY, HAVING
+  - **Backward Compatibility**: Existing `build()` method continues to work for simple queries
+  - **SQL Injection Protection**: All values properly parameterized
+  - **Comprehensive Tests**: 90+ unit tests covering all features
+  - **Documentation**: Complete guide with examples in `docs/query-builder-joins-aggregations.md`
+  - **Demo Example**: Full working example in `examples/join_and_aggregation_demo.rs`
 - **Optional Primary Keys Support**: Models can now be created without primary keys
   - Use case: settings tables, key-value stores, junction tables
   - `type Id = NoId` for tables without primary key

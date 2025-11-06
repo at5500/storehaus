@@ -549,4 +549,338 @@ mod tests {
         assert_eq!(result1.2, result2.2);
         assert_eq!(result1.3, result2.3);
     }
+
+    // ========================================
+    // JOIN Tests
+    // ========================================
+
+    #[test]
+    fn test_join_inner() {
+        use crate::query_builder::{JoinClause, JoinType, SelectField};
+
+        let builder = QueryBuilder::new()
+            .select_fields(vec![
+                SelectField::field("users.name"),
+                SelectField::field("orders.total"),
+            ])
+            .join(JoinClause::new_on(
+                JoinType::Inner,
+                "orders",
+                "users.id",
+                "orders.user_id",
+            ));
+
+        let (select_clause, join_clause, _, _, _, _, _, _, _) = builder.build_full();
+
+        assert_eq!(select_clause, "users.name, orders.total");
+        assert_eq!(join_clause, "INNER JOIN orders ON users.id = orders.user_id");
+    }
+
+    #[test]
+    fn test_join_left() {
+        use crate::query_builder::{JoinClause, JoinType};
+
+        let builder = QueryBuilder::new().join(JoinClause::new_on(
+            JoinType::Left,
+            "profiles",
+            "users.id",
+            "profiles.user_id",
+        ));
+
+        let (_, join_clause, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(
+            join_clause,
+            "LEFT JOIN profiles ON users.id = profiles.user_id"
+        );
+    }
+
+    #[test]
+    fn test_join_with_alias() {
+        use crate::query_builder::{JoinClause, JoinType};
+
+        let builder = QueryBuilder::new().join(
+            JoinClause::new_on(JoinType::Left, "orders", "users.id", "o.user_id")
+                .with_alias("o"),
+        );
+
+        let (_, join_clause, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(join_clause, "LEFT JOIN orders AS o ON users.id = o.user_id");
+    }
+
+    #[test]
+    fn test_join_using() {
+        use crate::query_builder::{JoinClause, JoinType};
+
+        let builder = QueryBuilder::new().join(JoinClause::new_using(
+            JoinType::Inner,
+            "profiles",
+            vec!["user_id".to_string()],
+        ));
+
+        let (_, join_clause, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(join_clause, "INNER JOIN profiles USING (user_id)");
+    }
+
+    #[test]
+    fn test_multiple_joins() {
+        use crate::query_builder::{JoinClause, JoinType};
+
+        let builder = QueryBuilder::new()
+            .join(JoinClause::new_on(
+                JoinType::Inner,
+                "orders",
+                "users.id",
+                "orders.user_id",
+            ))
+            .join(JoinClause::new_on(
+                JoinType::Left,
+                "profiles",
+                "users.id",
+                "profiles.user_id",
+            ));
+
+        let (_, join_clause, _, _, _, _, _, _, _) = builder.build_full();
+        assert!(join_clause.contains("INNER JOIN orders"));
+        assert!(join_clause.contains("LEFT JOIN profiles"));
+    }
+
+    // ========================================
+    // Aggregation Tests
+    // ========================================
+
+    #[test]
+    fn test_select_count_all() {
+        use crate::query_builder::SelectField;
+
+        let builder = QueryBuilder::new().select(SelectField::count_all().with_alias("total"));
+
+        let (select_clause, _, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(select_clause, "COUNT(*) AS total");
+    }
+
+    #[test]
+    fn test_select_count_field() {
+        use crate::query_builder::SelectField;
+
+        let builder = QueryBuilder::new().select(SelectField::count("id").with_alias("count"));
+
+        let (select_clause, _, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(select_clause, "COUNT(id) AS count");
+    }
+
+    #[test]
+    fn test_select_count_distinct() {
+        use crate::query_builder::SelectField;
+
+        let builder =
+            QueryBuilder::new().select(SelectField::count_distinct("user_id").with_alias("unique"));
+
+        let (select_clause, _, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(select_clause, "COUNT(DISTINCT user_id) AS unique");
+    }
+
+    #[test]
+    fn test_select_aggregates() {
+        use crate::query_builder::SelectField;
+
+        let builder = QueryBuilder::new().select_fields(vec![
+            SelectField::sum("amount").with_alias("total"),
+            SelectField::avg("price").with_alias("average"),
+            SelectField::min("created_at").with_alias("first"),
+            SelectField::max("updated_at").with_alias("last"),
+        ]);
+
+        let (select_clause, _, _, _, _, _, _, _, _) = builder.build_full();
+        assert!(select_clause.contains("SUM(amount) AS total"));
+        assert!(select_clause.contains("AVG(price) AS average"));
+        assert!(select_clause.contains("MIN(created_at) AS first"));
+        assert!(select_clause.contains("MAX(updated_at) AS last"));
+    }
+
+    #[test]
+    fn test_select_field_with_alias() {
+        use crate::query_builder::SelectField;
+
+        let builder =
+            QueryBuilder::new().select(SelectField::field_as("user_name", "display_name"));
+
+        let (select_clause, _, _, _, _, _, _, _, _) = builder.build_full();
+        assert_eq!(select_clause, "user_name AS display_name");
+    }
+
+    // ========================================
+    // GROUP BY Tests
+    // ========================================
+
+    #[test]
+    fn test_group_by_single() {
+        use crate::query_builder::{GroupBy, SelectField};
+
+        let builder = QueryBuilder::new()
+            .select_fields(vec![
+                SelectField::field("status"),
+                SelectField::count_all().with_alias("count"),
+            ])
+            .group_by(GroupBy::single("status"));
+
+        let (_, _, _, group_by_clause, _, _, _, _, _) = builder.build_full();
+        assert_eq!(group_by_clause, "GROUP BY status");
+    }
+
+    #[test]
+    fn test_group_by_multiple() {
+        use crate::query_builder::GroupBy;
+
+        let builder = QueryBuilder::new().group_by(GroupBy::new(vec![
+            "category".to_string(),
+            "status".to_string(),
+        ]));
+
+        let (_, _, _, group_by_clause, _, _, _, _, _) = builder.build_full();
+        assert_eq!(group_by_clause, "GROUP BY category, status");
+    }
+
+    // ========================================
+    // HAVING Tests
+    // ========================================
+
+    #[test]
+    fn test_having_single_condition() {
+        use crate::query_builder::{GroupBy, SelectField};
+
+        let builder = QueryBuilder::new()
+            .select_fields(vec![
+                SelectField::field("category"),
+                SelectField::count_all().with_alias("count"),
+            ])
+            .group_by(
+                GroupBy::single("category").having(QueryFilter::gt("COUNT(*)", json!(10))),
+            );
+
+        let (_, _, _, group_by_clause, having_clause, _, _, _, having_values) =
+            builder.build_full();
+
+        assert_eq!(group_by_clause, "GROUP BY category");
+        assert_eq!(having_clause, "HAVING COUNT(*) > $1");
+        assert_eq!(having_values.len(), 1);
+    }
+
+    #[test]
+    fn test_having_multiple_conditions() {
+        use crate::query_builder::GroupBy;
+
+        let builder = QueryBuilder::new().group_by(
+            GroupBy::single("user_id")
+                .having(QueryFilter::gt("COUNT(order_id)", json!(5)))
+                .having(QueryFilter::gte("SUM(total_amount)", json!(1000.0))),
+        );
+
+        let (_, _, _, _, having_clause, _, _, _, having_values) = builder.build_full();
+
+        assert!(having_clause.contains("HAVING"));
+        assert!(having_clause.contains("COUNT(order_id) > $1"));
+        assert!(having_clause.contains("SUM(total_amount) >= $2"));
+        assert_eq!(having_values.len(), 2);
+    }
+
+    // ========================================
+    // Complex Query Tests
+    // ========================================
+
+    #[test]
+    fn test_complex_query_with_all_features() {
+        use crate::query_builder::{GroupBy, JoinClause, JoinType, SelectField};
+
+        let builder = QueryBuilder::new()
+            .select_fields(vec![
+                SelectField::field("users.name"),
+                SelectField::count("orders.id").with_alias("order_count"),
+                SelectField::sum("orders.total_amount").with_alias("total_spent"),
+            ])
+            .join(JoinClause::new_on(
+                JoinType::Inner,
+                "orders",
+                "users.id",
+                "orders.user_id",
+            ))
+            .filter(QueryFilter::eq("orders.status", json!("completed")))
+            .group_by(
+                GroupBy::single("users.name")
+                    .having(QueryFilter::gt("COUNT(orders.id)", json!(3))),
+            )
+            .order_by("total_spent", SortOrder::Desc)
+            .limit(10);
+
+        let (
+            select_clause,
+            join_clause,
+            where_clause,
+            group_by_clause,
+            having_clause,
+            order_clause,
+            limit_clause,
+            where_values,
+            having_values,
+        ) = builder.build_full();
+
+        // Verify all parts
+        assert!(select_clause.contains("users.name"));
+        assert!(select_clause.contains("COUNT(orders.id)"));
+        assert!(select_clause.contains("SUM(orders.total_amount)"));
+
+        assert!(join_clause.contains("INNER JOIN orders"));
+
+        assert!(where_clause.contains("WHERE"));
+        assert!(where_clause.contains("orders.status"));
+
+        assert_eq!(group_by_clause, "GROUP BY users.name");
+
+        assert!(having_clause.contains("HAVING"));
+        assert!(having_clause.contains("COUNT(orders.id)"));
+
+        assert!(order_clause.contains("ORDER BY"));
+        assert!(order_clause.contains("total_spent DESC"));
+
+        assert_eq!(limit_clause, "LIMIT 10");
+
+        assert_eq!(where_values.len(), 1);
+        assert_eq!(having_values.len(), 1);
+    }
+
+    #[test]
+    fn test_backward_compatibility_build_method() {
+        // Test that old build() method still works for simple queries
+        let builder = QueryBuilder::new()
+            .filter(QueryFilter::eq("status", json!("active")))
+            .order_by("name", SortOrder::Asc)
+            .limit(20);
+
+        let (where_clause, order_clause, limit_clause, values) = builder.build();
+
+        assert!(where_clause.contains("WHERE"));
+        assert!(order_clause.contains("ORDER BY"));
+        assert!(limit_clause.contains("LIMIT"));
+        assert!(!values.is_empty());
+    }
+
+    #[test]
+    fn test_empty_select_defaults_to_all() {
+        use crate::query_builder::sql_generation::SqlGenerator;
+
+        let fields = vec![];
+        let select_clause = SqlGenerator::build_select_clause(&fields);
+
+        assert_eq!(select_clause, "*");
+    }
+
+    #[test]
+    fn test_join_types_to_sql() {
+        use crate::query_builder::JoinType;
+
+        assert_eq!(JoinType::Inner.to_sql(), "INNER JOIN");
+        assert_eq!(JoinType::Left.to_sql(), "LEFT JOIN");
+        assert_eq!(JoinType::Right.to_sql(), "RIGHT JOIN");
+        assert_eq!(JoinType::Full.to_sql(), "FULL OUTER JOIN");
+        assert_eq!(JoinType::Cross.to_sql(), "CROSS JOIN");
+    }
 }

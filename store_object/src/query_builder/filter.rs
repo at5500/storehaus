@@ -5,7 +5,7 @@
 use serde_json::Value;
 
 /// Query condition operators
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QueryOperator {
     Eq,        // =
     Ne,        // !=
@@ -23,7 +23,7 @@ pub enum QueryOperator {
 }
 
 /// Single condition in WHERE clause
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QueryCondition {
     pub field: String,
     pub operator: QueryOperator,
@@ -31,14 +31,14 @@ pub struct QueryCondition {
 }
 
 /// Logical operators for combining conditions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LogicalOperator {
     And,
     Or,
 }
 
 /// Query filter that can be nested
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QueryFilter {
     Condition(QueryCondition),
     Group {

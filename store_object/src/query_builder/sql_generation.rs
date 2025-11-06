@@ -2,7 +2,10 @@
 //!
 //! This module provides SQL query construction utilities.
 
+use crate::query_builder::aggregation::SelectField;
 use crate::query_builder::filter::{LogicalOperator, QueryCondition, QueryFilter, QueryOperator};
+use crate::query_builder::grouping::GroupBy;
+use crate::query_builder::join::{JoinClause, JoinCondition};
 use crate::query_builder::ordering::SortOrder;
 use serde_json::Value;
 
@@ -240,5 +243,119 @@ impl SqlGenerator {
         }
 
         clauses.join(" ")
+    }
+
+    /// Build SELECT clause from fields
+    pub fn build_select_clause(fields: &[SelectField]) -> String {
+        if fields.is_empty() {
+            return "*".to_string();
+        }
+
+        let field_parts: Vec<String> = fields.iter().map(|field| Self::build_select_field(field)).collect();
+
+        field_parts.join(", ")
+    }
+
+    fn build_select_field(field: &SelectField) -> String {
+        match field {
+            SelectField::All => "*".to_string(),
+            SelectField::Field(name) => name.clone(),
+            SelectField::FieldWithAlias { field, alias } => {
+                format!("{} AS {}", field, alias)
+            }
+            SelectField::Aggregate {
+                function,
+                field,
+                alias,
+            } => {
+                let func_name = function.to_sql();
+                let field_part = if function.is_distinct() {
+                    if let Some(f) = field {
+                        format!("DISTINCT {}", f)
+                    } else {
+                        "*".to_string()
+                    }
+                } else {
+                    field.as_deref().unwrap_or("*").to_string()
+                };
+
+                let aggregate = format!("{}({})", func_name, field_part);
+
+                if let Some(alias) = alias {
+                    format!("{} AS {}", aggregate, alias)
+                } else {
+                    aggregate
+                }
+            }
+        }
+    }
+
+    /// Build JOIN clauses
+    pub fn build_join_clause(joins: &[JoinClause]) -> String {
+        if joins.is_empty() {
+            return "".to_string();
+        }
+
+        joins
+            .iter()
+            .map(|join| {
+                let join_type = join.join_type.to_sql();
+                let table_part = if let Some(alias) = &join.alias {
+                    format!("{} AS {}", join.table, alias)
+                } else {
+                    join.table.clone()
+                };
+
+                let condition_part = match &join.condition {
+                    JoinCondition::On {
+                        left_field,
+                        right_field,
+                    } => {
+                        format!("ON {} = {}", left_field, right_field)
+                    }
+                    JoinCondition::Using(columns) => {
+                        format!("USING ({})", columns.join(", "))
+                    }
+                };
+
+                format!("{} {} {}", join_type, table_part, condition_part)
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Build GROUP BY clause
+    pub fn build_group_by_clause(group_by: Option<&GroupBy>) -> String {
+        match group_by {
+            Some(group) if !group.fields.is_empty() => {
+                format!("GROUP BY {}", group.fields.join(", "))
+            }
+            _ => "".to_string(),
+        }
+    }
+
+    /// Build HAVING clause
+    pub fn build_having_clause(group_by: Option<&GroupBy>) -> (String, Vec<Value>) {
+        match group_by {
+            Some(group) if group.has_having() => {
+                if let Some(having_conditions) = &group.having {
+                    let mut values = Vec::new();
+                    let mut param_counter = 1;
+
+                    let conditions_sql = having_conditions
+                        .iter()
+                        .map(|condition| {
+                            Self::build_condition_sql(condition, &mut values, &mut param_counter)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" AND ");
+
+                    (format!("HAVING {}", conditions_sql), values)
+                } else {
+                    ("".to_string(), Vec::new())
+                }
+            }
+            _ => ("".to_string(), Vec::new()),
+        }
     }
 }
