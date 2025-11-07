@@ -10,7 +10,7 @@ pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
     match normalized.as_str() {
         "Uuid" | "uuid::Uuid" => "UUID",
         "Option<Uuid>" => "UUID",
-        "String" => "VARCHAR",
+        "String" => "TEXT",
         "i8" => "SMALLINT",
         "i16" => "SMALLINT",
         "i32" => "INTEGER",
@@ -31,7 +31,7 @@ pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
         "Option<chrono::DateTime<chrono::Utc>>" | "Option<DateTime<Utc>>" | "Option<chrono::NaiveDateTime>" => "TIMESTAMP WITH TIME ZONE",
         "Option<chrono::Date<chrono::Utc>>" | "Option<chrono::NaiveDate>" => "DATE",
         // Optional basic types
-        "Option<String>" => "VARCHAR",
+        "Option<String>" => "TEXT",
         "Option<i8>" => "SMALLINT",
         "Option<i16>" => "SMALLINT",
         "Option<i32>" => "INTEGER",
@@ -47,7 +47,7 @@ pub fn rust_type_to_pg_type(rust_type: &str) -> &'static str {
         "Option<bigdecimal::BigDecimal>" => "NUMERIC",
         // Vec types
         "Vec<String>" => "TEXT[]",
-        _ => "VARCHAR", // default fallback
+        _ => "TEXT", // default fallback
     }
 }
 
