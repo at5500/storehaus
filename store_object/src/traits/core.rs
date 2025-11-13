@@ -62,10 +62,13 @@ pub trait StoreObject: Clone + Send + Sync + Debug {
     ) -> Result<Option<Self::Model>, StorehausError>;
 
     /// Update records matching query conditions
+    ///
+    /// - If query contains UpdateSet operations, data can be None
+    /// - If using legacy mode (no UpdateSet), data must be Some(model)
     async fn update_where(
         &self,
         query: crate::QueryBuilder,
-        data: Self::Model,
+        data: Option<Self::Model>,
     ) -> Result<Vec<Self::Model>, StorehausError>;
 
     /// Delete records matching query conditions

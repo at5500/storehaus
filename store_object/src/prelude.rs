@@ -10,7 +10,7 @@ pub use crate::traits::table_metadata::DatabaseExecutor;
 pub use crate::errors::StorehausError;
 
 // Core store functionality
-pub use crate::generic_store::GenericStore;
+pub use crate::generic_store::{GenericStore, GenericStoreTransaction};
 
 // ID type - use what's actually available
 pub use crate::id_type::{HasUniversalId, UniversalId};
@@ -22,7 +22,7 @@ pub use crate::validation::{ValidatedFieldName, ValidatedTableName, ValidationEr
 pub use crate::tagged_data::TaggedData;
 
 // Query building
-pub use crate::query_builder::{GroupBy, JoinClause, JoinType, QueryBuilder, QueryFilter, SelectField, SortOrder};
+pub use crate::query_builder::{GroupBy, JoinClause, JoinType, QueryBuilder, QueryFilter, SelectField, SortOrder, UpdateOperation, UpdateSet};
 
 // Cache params (re-exported from cache_system)
 pub use crate::CacheParams;

@@ -118,6 +118,7 @@ StoreHaus provides a comprehensive, high-level interface for database operations
 
 - **Automatic System Fields** - `__created_at__`, `__updated_at__`, soft delete, `__tags__`
 - **Database Indexes** - single and composite indexes with `#[index]` and `#[unique]` attributes
+- **Transaction Support** - atomic operations with type-safe QueryBuilder integration
 - **Operation Tagging** - categorize and track database operations
 - **Event System** - real-time database event monitoring and callbacks
 - **Redis Caching** - intelligent performance optimization with TTL
@@ -231,6 +232,7 @@ storehaus/
     ├── configuration.md   # Complete configuration reference
     ├── models.md          # Model definitions and usage
     ├── system-fields.md   # Automatic system fields
+    ├── transactions.md    # Database transactions and atomicity
     ├── caching.md         # Redis caching system
     ├── signals.md         # Event monitoring and callbacks
     ├── tags.md            # Operation tagging system
@@ -245,6 +247,7 @@ storehaus/
 - [Configuration Guide](docs/configuration.md) - Complete setup and configuration reference
 - [Model Definitions](docs/models.md) - Create data models with `#[model]` macro
 - [System Fields](docs/system-fields.md) - Automatic timestamps, tags, and soft delete
+- [Database Transactions](docs/transactions.md) - Atomic operations and consistency
 - [Caching System](docs/caching.md) - Redis performance optimization
 - [Signal System](docs/signals.md) - Database event monitoring and callbacks
 - [Tagging System](docs/tags.md) - Operation categorization and tracking
@@ -429,12 +432,12 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 - ✅ Automatic system fields management
 - ✅ Soft delete support
 - ✅ Database index support (single and composite indexes)
+- ✅ Transaction management (atomic operations with QueryBuilder)
 
 ### Planned
 - [ ] Model relationships support
 - [ ] Connection pool optimization
 - [ ] Advanced caching strategies
-- [ ] Transaction management
 - [ ] Rate limiting system (token bucket algorithm for preventing abuse)
   - [ ] Signal system rate limiting (event emission and callback registration)
   - [ ] Cache operations rate limiting

@@ -404,27 +404,49 @@ where
     async fn update_where(
         &self,
         query: crate::QueryBuilder,
-        data: Self::Model,
+        data: Option<Self::Model>,
     ) -> Result<Vec<Self::Model>, StorehausError> {
         // Build the WHERE clause from the query
         let (where_clause, _, _, params) = query.build();
 
-        // Get update field names and build SET clause
-        // IMPORTANT: Parameters must be bound in the order they appear in SQL
-        // So we number UPDATE parameters first ($1, $2, ...), then WHERE parameters
-        let update_fields = T::update_fields();
-        let set_clause = update_fields
-            .iter()
-            .enumerate()
-            .map(|(i, field)| {
-                let mut assignment = String::with_capacity(field.len() + 8);
-                assignment.push_str(field);
-                assignment.push_str(" = $");
-                assignment.push_str(&(i + 1).to_string()); // UPDATE params are $1, $2, ...
-                assignment
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+        // Check if query has custom update operations
+        let (set_clause, update_values, num_update_params) = if let Some(updates) = query.get_updates() {
+            // Use custom update operations (e.g., increment, decrement)
+            let mut assignments = Vec::new();
+            let mut values = Vec::new();
+            let mut param_num = 1;
+
+            // Sort operations by field name for consistent ordering
+            let mut ops: Vec<_> = updates.operations.iter().collect();
+            ops.sort_by(|a, b| a.0.cmp(b.0));
+
+            for (field_name, operation) in ops {
+                let sql_expr = operation.to_sql(field_name, param_num);
+                assignments.push(sql_expr);
+                values.push(operation.value().clone());
+                param_num += 1;
+            }
+
+            let set_clause = assignments.join(", ");
+            (set_clause, values, param_num - 1)
+        } else {
+            // Use legacy approach: extract all update fields from the model
+            let update_fields = T::update_fields();
+            let set_clause = update_fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| {
+                    let mut assignment = String::with_capacity(field.len() + 8);
+                    assignment.push_str(field);
+                    assignment.push_str(" = $");
+                    assignment.push_str(&(i + 1).to_string());
+                    assignment
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            (set_clause, Vec::new(), update_fields.len())
+        };
 
         // Adjust WHERE clause parameter numbers to come after UPDATE parameters
         let adjusted_where_clause = if !params.is_empty() {
@@ -432,7 +454,7 @@ where
             // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
             for i in (1..=params.len()).rev() {
                 let old_param = format!("${}", i);
-                let new_param = format!("${}", update_fields.len() + i);
+                let new_param = format!("${}", num_update_params + i);
                 where_str = where_str.replace(&old_param, &new_param);
             }
             where_str
@@ -451,22 +473,49 @@ where
         tracing::debug!("[UPDATE_WHERE] Table: {}", T::table_name());
         tracing::debug!("[UPDATE_WHERE] SQL: {}", sql);
         tracing::debug!("[UPDATE_WHERE] WHERE params count: {}", params.len());
-        tracing::debug!("[UPDATE_WHERE] UPDATE fields count: {}", update_fields.len());
+        tracing::debug!("[UPDATE_WHERE] UPDATE params count: {}", num_update_params);
+        tracing::debug!("[UPDATE_WHERE] Using custom updates: {}", query.has_updates());
 
-        // Use the model's bind method to create a query with UPDATE parameters bound
-        // This automatically binds $1, $2, ... for the UPDATE fields
-        let mut sqlx_query = data.bind_update_params_owned(&sql);
+        // Bind parameters and execute based on which mode we're using
+        let updated_records = if query.has_updates() {
+            // Custom updates mode: bind the update values manually
+            let mut q = sqlx::query_as::<_, T>(&sql);
+            for value in update_values {
+                q = self.bind_param(q, value);
+            }
 
-        // Then bind WHERE clause parameters (which are now numbered after UPDATE params)
-        for param in params {
-            sqlx_query = self.bind_param(sqlx_query, param);
-        }
+            // Then bind WHERE clause parameters
+            let mut sqlx_query = q;
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
 
-        // Execute the query
-        let updated_records = sqlx_query
-            .fetch_all(&self.db_pool)
-            .await
-            .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?;
+            // Execute the query
+            sqlx_query
+                .fetch_all(&self.db_pool)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        } else {
+            // Legacy mode: use model's bind method
+            let model = data.ok_or_else(|| {
+                StorehausError::InvalidConfiguration {
+                    message: "update_where called without data and without UpdateSet".to_string(),
+                }
+            })?;
+
+            let mut sqlx_query = model.bind_update_params_owned(&sql);
+
+            // Then bind WHERE clause parameters
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
+
+            // Execute the query
+            sqlx_query
+                .fetch_all(&self.db_pool)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        };
 
         // Emit signals for updated records if signal manager is present
         if self.signal_manager.is_some() && !updated_records.is_empty() {
@@ -808,5 +857,142 @@ where
         param: serde_json::Value,
     ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
         bind_json_param!(query, param)
+    }
+
+    /// Update records matching query using a custom executor (for transactions)
+    ///
+    /// This is identical to `update_where` but accepts any executor (Pool or Transaction).
+    /// Use this when you need to execute updates within a database transaction.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut tx = pool.begin().await?;
+    ///
+    /// let query = QueryBuilder::new()
+    ///     .filter(QueryFilter::eq("wallet_id", json!(wallet_id)))
+    ///     .update(UpdateSet::new().decrement("balance", json!(amount)));
+    ///
+    /// store.update_where_with_executor(&mut tx, query, None).await?;
+    ///
+    /// tx.commit().await?;
+    /// ```
+    pub async fn update_where_with_executor<'e, E>(
+        &self,
+        executor: E,
+        query: crate::QueryBuilder,
+        data: Option<T>,
+    ) -> Result<Vec<T>, StorehausError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        // Build the WHERE clause from the query
+        let (where_clause, _, _, params) = query.build();
+
+        // Check if query has custom update operations
+        let (set_clause, update_values, num_update_params) = if let Some(updates) = query.get_updates() {
+            // Use custom update operations (e.g., increment, decrement)
+            let mut assignments = Vec::new();
+            let mut values = Vec::new();
+            let mut param_num = 1;
+
+            // Sort operations by field name for consistent ordering
+            let mut ops: Vec<_> = updates.operations.iter().collect();
+            ops.sort_by(|a, b| a.0.cmp(b.0));
+
+            for (field_name, operation) in ops {
+                let sql_expr = operation.to_sql(field_name, param_num);
+                assignments.push(sql_expr);
+                values.push(operation.value().clone());
+                param_num += 1;
+            }
+
+            let set_clause = assignments.join(", ");
+            (set_clause, values, param_num - 1)
+        } else {
+            // Use legacy approach: extract all update fields from the model
+            let update_fields = T::update_fields();
+            let set_clause = update_fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| {
+                    let mut assignment = String::with_capacity(field.len() + 8);
+                    assignment.push_str(field);
+                    assignment.push_str(" = $");
+                    assignment.push_str(&(i + 1).to_string());
+                    assignment
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            (set_clause, Vec::new(), update_fields.len())
+        };
+
+        // Adjust WHERE clause parameter numbers to come after UPDATE parameters
+        let adjusted_where_clause = if !params.is_empty() {
+            let mut where_str = where_clause.clone();
+            // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
+            for i in (1..=params.len()).rev() {
+                let old_param = format!("${}", i);
+                let new_param = format!("${}", num_update_params + i);
+                where_str = where_str.replace(&old_param, &new_param);
+            }
+            where_str
+        } else {
+            where_clause.clone()
+        };
+
+        // Build UPDATE statement with RETURNING clause to get updated records
+        let sql = format!(
+            "UPDATE {} SET {}, __updated_at__ = NOW() {} RETURNING *",
+            T::table_name(),
+            set_clause,
+            adjusted_where_clause
+        );
+
+        // Bind parameters and execute based on which mode we're using
+        let updated_records = if query.has_updates() {
+            // Custom updates mode: bind the update values manually
+            let mut q = sqlx::query_as::<_, T>(&sql);
+            for value in update_values {
+                q = self.bind_param(q, value);
+            }
+
+            // Then bind WHERE clause parameters
+            let mut sqlx_query = q;
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
+
+            // Execute the query with provided executor
+            sqlx_query
+                .fetch_all(executor)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        } else {
+            // Legacy mode: use model's bind method
+            let model = data.ok_or_else(|| {
+                StorehausError::InvalidConfiguration {
+                    message: "update_where called without data and without UpdateSet".to_string(),
+                }
+            })?;
+
+            let mut sqlx_query = model.bind_update_params_owned(&sql);
+
+            // Then bind WHERE clause parameters
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
+
+            // Execute the query with provided executor
+            sqlx_query
+                .fetch_all(executor)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        };
+
+        // Note: When using transactions, signals and cache invalidation should be
+        // handled AFTER the transaction commits, not here
+
+        Ok(updated_records)
     }
 }

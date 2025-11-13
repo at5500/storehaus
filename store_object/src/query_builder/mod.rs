@@ -10,6 +10,7 @@ pub mod join;
 pub mod ordering;
 pub mod pagination;
 pub mod sql_generation;
+pub mod update;
 
 #[cfg(test)]
 mod tests;
@@ -24,3 +25,4 @@ pub use filter::{QueryFilter, QueryOperator};
 pub use grouping::GroupBy;
 pub use join::{JoinClause, JoinCondition, JoinType};
 pub use ordering::SortOrder;
+pub use update::{UpdateOperation, UpdateSet};

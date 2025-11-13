@@ -8,6 +8,7 @@ use crate::query_builder::grouping::GroupBy;
 use crate::query_builder::join::JoinClause;
 use crate::query_builder::ordering::SortOrder;
 use crate::query_builder::sql_generation::SqlGenerator;
+use crate::query_builder::update::UpdateSet;
 use serde_json::Value;
 
 /// Query builder for constructing complex database queries
@@ -20,6 +21,7 @@ pub struct QueryBuilder {
     pub(crate) order_by: Vec<(String, SortOrder)>,
     pub(crate) limit: Option<i64>,
     pub(crate) offset: Option<i64>,
+    pub(crate) updates: Option<UpdateSet>,
 }
 
 impl QueryBuilder {
@@ -32,6 +34,7 @@ impl QueryBuilder {
             order_by: Vec::new(),
             limit: None,
             offset: None,
+            updates: None,
         }
     }
 
@@ -108,6 +111,30 @@ impl QueryBuilder {
     /// Filter by records that have a specific tag
     pub fn filter_by_tag(self, tag: String) -> Self {
         self.filter(QueryFilter::has_tag(tag))
+    }
+
+    /// Set update operations for UPDATE queries
+    /// This allows specifying atomic operations like increment/decrement
+    ///
+    /// Example:
+    /// ```ignore
+    /// let query = QueryBuilder::new()
+    ///     .filter(QueryFilter::eq("wallet_id", json!(id)))
+    ///     .update(UpdateSet::new().increment("balance", json!(100)));
+    /// ```
+    pub fn update(mut self, updates: UpdateSet) -> Self {
+        self.updates = Some(updates);
+        self
+    }
+
+    /// Check if this query has update operations defined
+    pub fn has_updates(&self) -> bool {
+        self.updates.as_ref().map(|u| !u.is_empty()).unwrap_or(false)
+    }
+
+    /// Get the update operations
+    pub fn get_updates(&self) -> Option<&UpdateSet> {
+        self.updates.as_ref()
     }
 
     /// Build SELECT clause
