@@ -1,0 +1,28 @@
+services:
+  postgres-test:
+    image: postgres:15
+    container_name: storehaus_postgres_test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: storehaus_test
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d storehaus_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - storehaus_test_network
+
+volumes:
+  postgres_test_data:
+    driver: local
+
+networks:
+  storehaus_test_network:
+    driver: bridge

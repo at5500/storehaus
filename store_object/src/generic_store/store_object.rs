@@ -1185,7 +1185,9 @@ macro_rules! bind_json_param {
             }
             serde_json::Value::Bool(b) => $query.bind(b),
             serde_json::Value::Null => $query.bind(Option::<String>::None),
-            other => $query.bind(other.to_string()),
+            // For Array and Object, bind as serde_json::Value directly
+            // sqlx with 'json' feature handles JSONB serialization
+            other => $query.bind(other),
         }
     };
 }

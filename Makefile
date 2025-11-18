@@ -52,6 +52,23 @@ test-storehaus: ## Run StoreHaus tests only
 	@echo "🧪 Running StoreHaus tests..."
 	cargo test
 
+test-integration: ## Run integration tests with fresh PostgreSQL in Docker
+	@echo "🧪 Running integration tests with fresh database..."
+	@echo "🛑 Stopping existing test containers..."
+	-docker compose -f docker-compose.test.yml down -v 2>/dev/null
+	@echo "🐳 Starting fresh PostgreSQL on port 5433..."
+	docker compose -f docker-compose.test.yml up -d postgres-test
+	@echo "⏳ Waiting for database to be ready..."
+	@until docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U postgres -d storehaus_test 2>/dev/null; do \
+		sleep 1; \
+	done
+	@echo "✅ Database is ready!"
+	@echo "🧪 Running integration tests..."
+	DATABASE_URL=postgres://postgres:password@localhost:5433/storehaus_test cargo test --test json_types_test -- --test-threads=1
+	@echo "🛑 Cleaning up..."
+	docker compose -f docker-compose.test.yml down -v
+	@echo "✅ Integration tests complete!"
+
 build: ## Build all crates
 	@echo "🔨 Building project..."
 	cargo build
