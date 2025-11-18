@@ -255,6 +255,13 @@ where
     }
 
     async fn delete(&self, id: &Self::Id) -> Result<bool, StorehausError> {
+        // If model supports soft delete, use soft delete instead of hard delete
+        if T::supports_soft_delete() {
+            use crate::traits::SoftDeletable;
+            return self.set_active(id, false).await;
+        }
+
+        // Hard delete for models without soft delete support
         let result = sqlx::query(T::delete_by_id_sql())
             .bind(id)
             .execute(&self.db_pool)
@@ -277,6 +284,19 @@ where
     }
 
     async fn delete_many(&self, ids: Vec<Self::Id>) -> Result<Vec<Self::Id>, StorehausError> {
+        // If model supports soft delete, use soft delete for all IDs
+        if T::supports_soft_delete() {
+            use crate::traits::SoftDeletable;
+            let mut deleted_ids = Vec::new();
+            for id in ids {
+                if self.set_active(&id, false).await? {
+                    deleted_ids.push(id);
+                }
+            }
+            return Ok(deleted_ids);
+        }
+
+        // Hard delete for models without soft delete support
         let mut deleted_ids = Vec::new();
 
         // Use transaction for batch deletes
@@ -367,7 +387,13 @@ where
         full_sql.push_str(base_sql);
         if !where_clause.is_empty() {
             full_sql.push(' ');
-            full_sql.push_str(&where_clause);
+            // If base_sql already has WHERE (soft delete), replace WHERE with AND
+            if base_sql.contains(" WHERE ") && where_clause.starts_with("WHERE ") {
+                full_sql.push_str("AND ");
+                full_sql.push_str(&where_clause[6..]); // Skip "WHERE "
+            } else {
+                full_sql.push_str(&where_clause);
+            }
         }
         if !order_clause.is_empty() {
             full_sql.push(' ');
@@ -449,7 +475,7 @@ where
         };
 
         // Adjust WHERE clause parameter numbers to come after UPDATE parameters
-        let adjusted_where_clause = if !params.is_empty() {
+        let mut adjusted_where_clause = if !params.is_empty() {
             let mut where_str = where_clause.clone();
             // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
             for i in (1..=params.len()).rev() {
@@ -461,6 +487,17 @@ where
         } else {
             where_clause.clone()
         };
+
+        // Add soft delete filter for models with soft delete support
+        if T::supports_soft_delete() {
+            if let Some(soft_delete_field) = T::soft_delete_field() {
+                if adjusted_where_clause.is_empty() {
+                    adjusted_where_clause = format!("WHERE {} = TRUE", soft_delete_field);
+                } else {
+                    adjusted_where_clause = format!("{} AND {} = TRUE", adjusted_where_clause, soft_delete_field);
+                }
+            }
+        }
 
         // Build UPDATE statement with RETURNING clause to get updated records
         let sql = format!(
@@ -562,6 +599,154 @@ where
                 .invalidate_queries(cache_prefix, T::table_name())
                 .await;
         }
+
+        Ok(updated_records)
+    }
+
+    /// Update records matching query using a custom executor (for transactions)
+    ///
+    /// This is identical to `update_where` but accepts any executor (Pool or Transaction).
+    /// Use this when you need to execute updates within a database transaction.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut tx = pool.begin().await?;
+    ///
+    /// let query = QueryBuilder::new()
+    ///     .filter(QueryFilter::eq("wallet_id", json!(wallet_id)))
+    ///     .update(UpdateSet::new().decrement("balance", json!(amount)));
+    ///
+    /// store.update_where_with_executor(&mut tx, query, None).await?;
+    ///
+    /// tx.commit().await?;
+    /// ```
+    async fn update_where_with_executor<'e, E>(
+        &self,
+        executor: E,
+        query: crate::QueryBuilder,
+        data: Option<Self::Model>,
+    ) -> Result<Vec<Self::Model>, StorehausError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        // Build the WHERE clause from the query
+        let (where_clause, _, _, params) = query.build();
+
+        // Check if query has custom update operations
+        let (set_clause, update_values, num_update_params) = if let Some(updates) = query.get_updates() {
+            // Use custom update operations (e.g., increment, decrement)
+            let mut assignments = Vec::new();
+            let mut values = Vec::new();
+            let mut param_num = 1;
+
+            // Sort operations by field name for consistent ordering
+            let mut ops: Vec<_> = updates.operations.iter().collect();
+            ops.sort_by(|a, b| a.0.cmp(b.0));
+
+            for (field_name, operation) in ops {
+                let sql_expr = operation.to_sql(field_name, param_num);
+                assignments.push(sql_expr);
+                values.push(operation.value().clone());
+                param_num += 1;
+            }
+
+            let set_clause = assignments.join(", ");
+            (set_clause, values, param_num - 1)
+        } else {
+            // Use legacy approach: extract all update fields from the model
+            let update_fields = T::update_fields();
+            let set_clause = update_fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| {
+                    let mut assignment = String::with_capacity(field.len() + 8);
+                    assignment.push_str(field);
+                    assignment.push_str(" = $");
+                    assignment.push_str(&(i + 1).to_string());
+                    assignment
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            (set_clause, Vec::new(), update_fields.len())
+        };
+
+        // Adjust WHERE clause parameter numbers to come after UPDATE parameters
+        let mut adjusted_where_clause = if !params.is_empty() {
+            let mut where_str = where_clause.clone();
+            // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
+            for i in (1..=params.len()).rev() {
+                let old_param = format!("${}", i);
+                let new_param = format!("${}", num_update_params + i);
+                where_str = where_str.replace(&old_param, &new_param);
+            }
+            where_str
+        } else {
+            where_clause.clone()
+        };
+
+        // Add soft delete filter for models with soft delete support
+        if T::supports_soft_delete() {
+            if let Some(soft_delete_field) = T::soft_delete_field() {
+                if adjusted_where_clause.is_empty() {
+                    adjusted_where_clause = format!("WHERE {} = TRUE", soft_delete_field);
+                } else {
+                    adjusted_where_clause = format!("{} AND {} = TRUE", adjusted_where_clause, soft_delete_field);
+                }
+            }
+        }
+
+        // Build UPDATE statement with RETURNING clause to get updated records
+        let sql = format!(
+            "UPDATE {} SET {}, __updated_at__ = NOW() {} RETURNING *",
+            T::table_name(),
+            set_clause,
+            adjusted_where_clause
+        );
+
+        // Bind parameters and execute based on which mode we're using
+        let updated_records = if query.has_updates() {
+            // Custom updates mode: bind the update values manually
+            let mut q = sqlx::query_as::<_, T>(&sql);
+            for value in update_values {
+                q = self.bind_param(q, value);
+            }
+
+            // Then bind WHERE clause parameters
+            let mut sqlx_query = q;
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
+
+            // Execute the query with provided executor
+            sqlx_query
+                .fetch_all(executor)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        } else {
+            // Legacy mode: use model's bind method
+            let model = data.ok_or_else(|| {
+                StorehausError::InvalidConfiguration {
+                    message: "update_where called without data and without UpdateSet".to_string(),
+                }
+            })?;
+
+            let mut sqlx_query = model.bind_update_params_owned(&sql);
+
+            // Then bind WHERE clause parameters
+            for param in params {
+                sqlx_query = self.bind_param(sqlx_query, param);
+            }
+
+            // Execute the query with provided executor
+            sqlx_query
+                .fetch_all(executor)
+                .await
+                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
+        };
+
+        // Note: When using transactions, signals and cache invalidation should be
+        // handled AFTER the transaction commits, not here
 
         Ok(updated_records)
     }
@@ -768,13 +953,192 @@ where
         }
     }
 
+    /// Delete records matching the given query using a custom executor (for transactions).
+    ///
+    /// This method allows you to perform deletions within a transaction by accepting
+    /// any SQLx executor (Pool, Transaction, or Connection).
+    ///
+    /// For models with soft delete enabled, this performs an UPDATE to set the soft delete
+    /// field to false. For models without soft delete, this performs a hard DELETE.
+    ///
+    /// Returns the IDs of deleted records (or empty vec if table has no primary key).
+    ///
+    /// # Important Notes
+    ///
+    /// - **Signals**: When using transactions, signals should be emitted AFTER the transaction
+    ///   commits successfully, not during this method call. This ensures signals are only sent
+    ///   for committed changes.
+    /// - **Cache**: Similarly, cache invalidation should happen after transaction commit.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use sqlx::PgPool;
+    /// use storehaus::prelude::*;
+    ///
+    /// async fn delete_account_with_wallets(
+    ///     pool: &PgPool,
+    ///     account_id: Uuid,
+    /// ) -> Result<(), StorehausError> {
+    ///     let mut tx = pool.begin().await?;
+    ///
+    ///     // First delete all wallets for the account
+    ///     let wallet_query = QueryBuilder::new()
+    ///         .filter(QueryFilter::eq("account_id", json!(account_id)));
+    ///     wallet_store.delete_where_with_executor(&mut tx, wallet_query).await?;
+    ///
+    ///     // Then delete the account itself
+    ///     let account_query = QueryBuilder::new()
+    ///         .filter(QueryFilter::eq("account_id", json!(account_id)));
+    ///     account_store.delete_where_with_executor(&mut tx, account_query).await?;
+    ///
+    ///     tx.commit().await?;
+    ///     // Emit signals and invalidate cache here, after commit
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `executor` - Any SQLx executor (Pool, Transaction, or Connection)
+    /// * `query` - QueryBuilder with filters to match records for deletion
+    ///
+    /// # Returns
+    ///
+    /// Vec of IDs of deleted records (empty if table has no primary key)
+    async fn delete_where_with_executor<'e, E>(
+        &self,
+        executor: E,
+        query: crate::QueryBuilder,
+    ) -> Result<Vec<Self::Id>, StorehausError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        // Build the WHERE clause from the query
+        let (where_clause, _, _, params) = query.build();
+
+        // Check if table has primary key
+        let has_primary_key = !T::primary_key_field().is_empty();
+
+        // For soft delete models, we need to UPDATE rather than DELETE
+        if T::supports_soft_delete() {
+            let soft_delete_field =
+                T::soft_delete_field().ok_or_else(|| StorehausError::InvalidConfiguration {
+                    message: format!(
+                        "Model {} reports supports_soft_delete=true but soft_delete_field is None",
+                        T::table_name()
+                    ),
+                })?;
+
+            // Build UPDATE statement to set soft delete field = false
+            let sql = if has_primary_key {
+                format!(
+                    "UPDATE {} SET {} = false, __updated_at__ = NOW() {} RETURNING {}",
+                    T::table_name(),
+                    soft_delete_field,
+                    where_clause,
+                    T::primary_key_field()
+                )
+            } else {
+                // For tables without PK, just execute the update without returning IDs
+                format!(
+                    "UPDATE {} SET {} = false, __updated_at__ = NOW() {}",
+                    T::table_name(),
+                    soft_delete_field,
+                    where_clause
+                )
+            };
+
+            let deleted_ids = if has_primary_key {
+                let mut sqlx_query = sqlx::query_as::<_, (Self::Id,)>(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
+                }
+
+                let soft_deleted_ids: Vec<(Self::Id,)> = sqlx_query
+                    .fetch_all(executor)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "delete_where_with_executor", e))?;
+
+                soft_deleted_ids.into_iter().map(|(id,)| id).collect()
+            } else {
+                // For tables without PK, execute and return empty vec
+                let mut sqlx_query = sqlx::query(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_raw(sqlx_query, param);
+                }
+
+                sqlx_query
+                    .execute(executor)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "delete_where_with_executor", e))?;
+
+                Vec::new()
+            };
+
+            // Note: When using transactions, signals should be emitted AFTER the transaction commits, not here
+
+            Ok(deleted_ids)
+        } else {
+            // Hard delete for models without soft delete support
+            let sql = if has_primary_key {
+                format!(
+                    "DELETE FROM {} {} RETURNING {}",
+                    T::table_name(),
+                    where_clause,
+                    T::primary_key_field()
+                )
+            } else {
+                format!("DELETE FROM {} {}", T::table_name(), where_clause)
+            };
+
+            let deleted_ids = if has_primary_key {
+                let mut sqlx_query = sqlx::query_as::<_, (Self::Id,)>(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_for_id_query(sqlx_query, param);
+                }
+
+                let hard_deleted_ids: Vec<(Self::Id,)> = sqlx_query
+                    .fetch_all(executor)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "delete_where_with_executor", e))?;
+
+                hard_deleted_ids.into_iter().map(|(id,)| id).collect()
+            } else {
+                let mut sqlx_query = sqlx::query(&sql);
+                for param in params {
+                    sqlx_query = self.bind_param_raw(sqlx_query, param);
+                }
+
+                sqlx_query
+                    .execute(executor)
+                    .await
+                    .map_err(|e| StorehausError::database_operation(T::table_name(), "delete_where_with_executor", e))?;
+
+                Vec::new()
+            };
+
+            // Note: When using transactions, signals should be emitted AFTER the transaction commits, not here
+
+            Ok(deleted_ids)
+        }
+    }
+
     async fn count_where(&self, query: crate::QueryBuilder) -> Result<i64, StorehausError> {
         let (where_clause, _, _, params) = query.build(); // No ORDER BY or LIMIT for COUNT
                                                           // Avoid format! allocation by building string directly
         let base_sql = T::count_base_sql();
         let mut full_sql = String::with_capacity(base_sql.len() + where_clause.len());
         full_sql.push_str(base_sql);
-        full_sql.push_str(&where_clause);
+        if !where_clause.is_empty() {
+            // If base_sql already has WHERE (soft delete), replace WHERE with AND
+            if base_sql.contains(" WHERE ") && where_clause.starts_with("WHERE ") {
+                full_sql.push_str(" AND ");
+                full_sql.push_str(&where_clause[6..]); // Skip "WHERE "
+            } else {
+                full_sql.push_str(&where_clause);
+            }
+        }
 
         let mut sqlx_query = sqlx::query(&full_sql);
         for param in params {
@@ -857,142 +1221,5 @@ where
         param: serde_json::Value,
     ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
         bind_json_param!(query, param)
-    }
-
-    /// Update records matching query using a custom executor (for transactions)
-    ///
-    /// This is identical to `update_where` but accepts any executor (Pool or Transaction).
-    /// Use this when you need to execute updates within a database transaction.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let mut tx = pool.begin().await?;
-    ///
-    /// let query = QueryBuilder::new()
-    ///     .filter(QueryFilter::eq("wallet_id", json!(wallet_id)))
-    ///     .update(UpdateSet::new().decrement("balance", json!(amount)));
-    ///
-    /// store.update_where_with_executor(&mut tx, query, None).await?;
-    ///
-    /// tx.commit().await?;
-    /// ```
-    pub async fn update_where_with_executor<'e, E>(
-        &self,
-        executor: E,
-        query: crate::QueryBuilder,
-        data: Option<T>,
-    ) -> Result<Vec<T>, StorehausError>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
-        // Build the WHERE clause from the query
-        let (where_clause, _, _, params) = query.build();
-
-        // Check if query has custom update operations
-        let (set_clause, update_values, num_update_params) = if let Some(updates) = query.get_updates() {
-            // Use custom update operations (e.g., increment, decrement)
-            let mut assignments = Vec::new();
-            let mut values = Vec::new();
-            let mut param_num = 1;
-
-            // Sort operations by field name for consistent ordering
-            let mut ops: Vec<_> = updates.operations.iter().collect();
-            ops.sort_by(|a, b| a.0.cmp(b.0));
-
-            for (field_name, operation) in ops {
-                let sql_expr = operation.to_sql(field_name, param_num);
-                assignments.push(sql_expr);
-                values.push(operation.value().clone());
-                param_num += 1;
-            }
-
-            let set_clause = assignments.join(", ");
-            (set_clause, values, param_num - 1)
-        } else {
-            // Use legacy approach: extract all update fields from the model
-            let update_fields = T::update_fields();
-            let set_clause = update_fields
-                .iter()
-                .enumerate()
-                .map(|(i, field)| {
-                    let mut assignment = String::with_capacity(field.len() + 8);
-                    assignment.push_str(field);
-                    assignment.push_str(" = $");
-                    assignment.push_str(&(i + 1).to_string());
-                    assignment
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            (set_clause, Vec::new(), update_fields.len())
-        };
-
-        // Adjust WHERE clause parameter numbers to come after UPDATE parameters
-        let adjusted_where_clause = if !params.is_empty() {
-            let mut where_str = where_clause.clone();
-            // Replace $1, $2, ... in WHERE clause with correct numbers after UPDATE params
-            for i in (1..=params.len()).rev() {
-                let old_param = format!("${}", i);
-                let new_param = format!("${}", num_update_params + i);
-                where_str = where_str.replace(&old_param, &new_param);
-            }
-            where_str
-        } else {
-            where_clause.clone()
-        };
-
-        // Build UPDATE statement with RETURNING clause to get updated records
-        let sql = format!(
-            "UPDATE {} SET {}, __updated_at__ = NOW() {} RETURNING *",
-            T::table_name(),
-            set_clause,
-            adjusted_where_clause
-        );
-
-        // Bind parameters and execute based on which mode we're using
-        let updated_records = if query.has_updates() {
-            // Custom updates mode: bind the update values manually
-            let mut q = sqlx::query_as::<_, T>(&sql);
-            for value in update_values {
-                q = self.bind_param(q, value);
-            }
-
-            // Then bind WHERE clause parameters
-            let mut sqlx_query = q;
-            for param in params {
-                sqlx_query = self.bind_param(sqlx_query, param);
-            }
-
-            // Execute the query with provided executor
-            sqlx_query
-                .fetch_all(executor)
-                .await
-                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
-        } else {
-            // Legacy mode: use model's bind method
-            let model = data.ok_or_else(|| {
-                StorehausError::InvalidConfiguration {
-                    message: "update_where called without data and without UpdateSet".to_string(),
-                }
-            })?;
-
-            let mut sqlx_query = model.bind_update_params_owned(&sql);
-
-            // Then bind WHERE clause parameters
-            for param in params {
-                sqlx_query = self.bind_param(sqlx_query, param);
-            }
-
-            // Execute the query with provided executor
-            sqlx_query
-                .fetch_all(executor)
-                .await
-                .map_err(|e| StorehausError::database_operation(T::table_name(), "query", e))?
-        };
-
-        // Note: When using transactions, signals and cache invalidation should be
-        // handled AFTER the transaction commits, not here
-
-        Ok(updated_records)
     }
 }

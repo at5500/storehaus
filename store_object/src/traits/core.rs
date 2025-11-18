@@ -71,11 +71,35 @@ pub trait StoreObject: Clone + Send + Sync + Debug {
         data: Option<Self::Model>,
     ) -> Result<Vec<Self::Model>, StorehausError>;
 
+    /// Update records matching query conditions with custom executor
+    ///
+    /// - If query contains UpdateSet operations, data can be None
+    /// - If using legacy mode (no UpdateSet), data must be Some(model)
+    async fn update_where_with_executor<'e, E>(
+        &self,
+        executor: E,
+        query: crate::QueryBuilder,
+        data: Option<Self::Model>,
+    ) -> Result<Vec<Self::Model>, StorehausError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres> + 'e,
+        'e: 'async_trait;
+
     /// Delete records matching query conditions
     async fn delete_where(
         &self,
         query: crate::QueryBuilder,
     ) -> Result<Vec<Self::Id>, StorehausError>;
+
+    /// Delete records matching query conditions with custom executor
+    async fn delete_where_with_executor<'e, E>(
+        &self,
+        executor: E,
+        query: crate::QueryBuilder,
+    ) -> Result<Vec<Self::Id>, StorehausError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres> + 'e,
+        'e: 'async_trait;
 
     /// Count records matching query conditions
     async fn count_where(&self, query: crate::QueryBuilder) -> Result<i64, StorehausError>;

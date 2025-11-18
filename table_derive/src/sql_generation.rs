@@ -137,27 +137,60 @@ pub fn generate_table_metadata_impl(
 
     // Generate GET_BY_ID SQL - only if primary key exists
     let get_by_id_sql = if let Some(pk_field) = primary_key_field {
-        format!(
-            "SELECT * FROM {} WHERE {} = $1",
-            safe_sql_identifier(table_name),
-            safe_sql_identifier(&pk_field.to_string())
-        )
+        if let Some(soft_delete_field_name) = soft_delete_field {
+            format!(
+                "SELECT * FROM {} WHERE {} = $1 AND {} = TRUE",
+                safe_sql_identifier(table_name),
+                safe_sql_identifier(&pk_field.to_string()),
+                safe_sql_identifier(soft_delete_field_name)
+            )
+        } else {
+            format!(
+                "SELECT * FROM {} WHERE {} = $1",
+                safe_sql_identifier(table_name),
+                safe_sql_identifier(&pk_field.to_string())
+            )
+        }
     } else {
         // For tables without primary key, lookups require manual query building
         String::new()
     };
 
     // Generate COUNT_ALL SQL
-    let count_all_sql = format!(
-        "SELECT COUNT(*) as total FROM {}",
-        safe_sql_identifier(table_name)
-    );
+    let count_all_sql = if let Some(soft_delete_field_name) = soft_delete_field {
+        format!(
+            "SELECT COUNT(*) as total FROM {} WHERE {} = TRUE",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(soft_delete_field_name)
+        )
+    } else {
+        format!(
+            "SELECT COUNT(*) as total FROM {}",
+            safe_sql_identifier(table_name)
+        )
+    };
 
     // Generate SELECT_BASE SQL
-    let select_base_sql = format!("SELECT * FROM {}", safe_sql_identifier(table_name));
+    let select_base_sql = if let Some(soft_delete_field_name) = soft_delete_field {
+        format!(
+            "SELECT * FROM {} WHERE {} = TRUE",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(soft_delete_field_name)
+        )
+    } else {
+        format!("SELECT * FROM {}", safe_sql_identifier(table_name))
+    };
 
     // Generate COUNT_BASE SQL
-    let count_base_sql = format!("SELECT COUNT(*) FROM {}", safe_sql_identifier(table_name));
+    let count_base_sql = if let Some(soft_delete_field_name) = soft_delete_field {
+        format!(
+            "SELECT COUNT(*) as total FROM {} WHERE {} = TRUE",
+            safe_sql_identifier(table_name),
+            safe_sql_identifier(soft_delete_field_name)
+        )
+    } else {
+        format!("SELECT COUNT(*) as total FROM {}", safe_sql_identifier(table_name))
+    };
 
     let create_fields_vec = quote! {
         vec![#(#create_fields),*]

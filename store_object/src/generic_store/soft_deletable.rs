@@ -15,9 +15,9 @@ where
     T: TableMetadata
         + crate::traits::table_metadata::DatabaseExecutor
         + for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow>
-        + sqlx::Type<sqlx::Postgres>
         + serde::Serialize
         + Unpin,
+    T::Id: for<'q> sqlx::Encode<'q, sqlx::Postgres> + sqlx::Type<sqlx::Postgres>,
 {
     async fn list_active(&self) -> Result<Vec<Self::Model>, StorehausError> {
         if !T::supports_soft_delete() {
@@ -66,9 +66,10 @@ where
         })?;
 
         let sql = format!(
-            "UPDATE {} SET {} = $1, __updated_at__ = NOW() WHERE id = $2",
+            "UPDATE {} SET {} = $1, __updated_at__ = NOW() WHERE {} = $2",
             T::table_name(),
-            soft_delete_field
+            soft_delete_field,
+            T::primary_key_field()
         );
         let result = sqlx::query(&sql)
             .bind(is_active)
