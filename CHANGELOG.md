@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Improved JSON/JSONB Type Support**: Full support for JSON fields in models
+  - `serde_json::Value` fields correctly map to PostgreSQL `JSONB` type
+  - `sqlx::types::Json<T>` support for typed JSON with custom structs
+  - `Option<Json<T>>` and `Option<serde_json::Value>` properly handled
+  - JSON objects and arrays correctly serialized/deserialized
+  - Short type variants support (`DateTime<Utc>`, `NaiveDateTime`, `Decimal`, etc.)
+- **Integration Test Infrastructure**: Isolated testing environment for database operations
+  - `docker-compose.test.yml` with separate PostgreSQL on port 5433
+  - `make test-integration` command for running tests with fresh database
+  - Automatic container cleanup after tests
+  - Comprehensive JSON/JSONB integration tests
 - **QueryBuilder JOIN and Aggregation Support**: Comprehensive SQL query capabilities
   - **JOIN Operations**: Support for all major JOIN types
     - `INNER JOIN`, `LEFT JOIN`, `RIGHT JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`
@@ -59,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tracing` dependency for SQL debugging and diagnostics
 
 ### Fixed
+- **CRITICAL**: Fixed JSON object/array binding in `bind_json_param!` macro
+  - Previously converted to string with `to_string()`, causing type mismatch errors
+  - Now binds `serde_json::Value` directly for proper JSONB serialization
+  - Enables proper storage and retrieval of nested JSON structures
 - **CRITICAL**: Fixed SQL parameter binding in `update_where()` operations
   - UPDATE parameters now correctly numbered starting from $1
   - WHERE clause parameters renumbered to come after UPDATE parameters

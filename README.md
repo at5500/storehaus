@@ -340,7 +340,8 @@ make docker-down        # Stop all services
 
 # Building and testing
 make build              # Build project
-make test               # Run tests
+make test               # Run unit tests
+make test-integration   # Run integration tests with fresh PostgreSQL
 make check              # Format, lint, and test
 
 # Examples (recommended way to explore StoreHaus)
